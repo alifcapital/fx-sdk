@@ -2,8 +2,6 @@ package v1
 
 import (
 	"context"
-	"crypto/ed25519"
-	"encoding/base64"
 	"fmt"
 	"time"
 
@@ -21,6 +19,14 @@ type Client struct {
 	order   forexv1.OrderServiceClient
 	partner forexv1.PartnerServiceClient
 	trade   forexv1.TradeServiceClient
+
+	// Stream reconnect policy, reused from the unary retry config. Each
+	// successful Recv on a subscription resets the consecutive-failure
+	// counter, so the stream only gives up after maxRetries consecutive
+	// failed reconnect attempts with no messages in between.
+	maxRetries int
+	baseDelay  time.Duration
+	maxDelay   time.Duration
 }
 
 type config struct {
@@ -64,10 +70,6 @@ func New(target string, partnerId, apiKey string, db *pgxpool.Pool, opts ...Opti
 	if apiKey == "" {
 		return nil, fmt.Errorf("fx-sdk: api_key is required")
 	}
-	sign, err := signApiKey(apiKey, partnerId)
-	if err != nil {
-		return nil, err
-	}
 	if db == nil {
 		return nil, fmt.Errorf("fx-sdk: db is required")
 	}
@@ -81,7 +83,7 @@ func New(target string, partnerId, apiKey string, db *pgxpool.Pool, opts ...Opti
 		o(&cfg)
 	}
 
-	md := metadata.Pairs("partner-id", partnerId, "api-key", sign)
+	md := metadata.Pairs("partner-id", partnerId, "api-key", apiKey)
 
 	dialOpts := make([]grpc.DialOption, 0, len(cfg.dialOpts)+2)
 	dialOpts = append(dialOpts,
@@ -101,11 +103,14 @@ func New(target string, partnerId, apiKey string, db *pgxpool.Pool, opts ...Opti
 	}
 
 	return &Client{
-		conn:    conn,
-		db:      db,
-		order:   forexv1.NewOrderServiceClient(conn),
-		partner: forexv1.NewPartnerServiceClient(conn),
-		trade:   forexv1.NewTradeServiceClient(conn),
+		conn:       conn,
+		db:         db,
+		order:      forexv1.NewOrderServiceClient(conn),
+		partner:    forexv1.NewPartnerServiceClient(conn),
+		trade:      forexv1.NewTradeServiceClient(conn),
+		maxRetries: cfg.maxRetries,
+		baseDelay:  cfg.baseDelay,
+		maxDelay:   cfg.maxDelay,
 	}, nil
 }
 
@@ -124,13 +129,4 @@ func authStreamInterceptor(md metadata.MD) grpc.StreamClientInterceptor {
 // Close releases the underlying gRPC connection.
 func (c *Client) Close() error {
 	return c.conn.Close()
-}
-
-func signApiKey(apiKey, partnerId string) (string, error) {
-	priv, err := base64.StdEncoding.DecodeString(apiKey)
-	if err != nil {
-		return "", err
-	}
-	sign := ed25519.Sign(priv, []byte(partnerId))
-	return base64.StdEncoding.EncodeToString(sign), nil
 }

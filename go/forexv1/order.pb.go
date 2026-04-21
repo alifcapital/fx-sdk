@@ -23,15 +23,15 @@ const (
 
 type SubmitOrderRequest struct {
 	state            protoimpl.MessageState `protogen:"open.v1"`
-	Side             *int32                 `protobuf:"varint,1,opt,name=side" json:"side,omitempty"`       // 1 = buy, 2 = sell
-	Segment          *int32                 `protobuf:"varint,2,opt,name=segment" json:"segment,omitempty"` // 1 = Retail, 2 = Corporate, 3 = Treasury
-	AllowPartialFill *bool                  `protobuf:"varint,3,opt,name=allow_partial_fill,json=allowPartialFill" json:"allow_partial_fill,omitempty"`
-	ClientId         *string                `protobuf:"bytes,4,opt,name=client_id,json=clientId" json:"client_id,omitempty"`                            // client's unique identifier
-	ClientInn        *string                `protobuf:"bytes,5,opt,name=client_inn,json=clientInn" json:"client_inn,omitempty"`                         // client's INN (taxpayer identification number)
-	CurrencyPair     *string                `protobuf:"bytes,6,opt,name=currency_pair,json=currencyPair" json:"currency_pair,omitempty"`                // e.g. "USD/TJS"
-	Quantity         *string                `protobuf:"bytes,7,opt,name=quantity" json:"quantity,omitempty"`                                            // quantity is in the Base currency (the first currency in the pair)
-	LimitRate        *string                `protobuf:"bytes,8,opt,name=limit_rate,json=limitRate" json:"limit_rate,omitempty"`                         // client's rate, positive decimal string
-	RefId            *string                `protobuf:"bytes,9,opt,name=ref_id,json=refId" json:"ref_id,omitempty"`                                     // partner's reference id, up to 128 chars, prevents duplicate orders on retry
+	RefId            *int64                 `protobuf:"varint,1,opt,name=ref_id,json=refId" json:"ref_id,omitempty"` // partner's reference id, prevents duplicate orders on retry
+	Side             *int32                 `protobuf:"varint,2,opt,name=side" json:"side,omitempty"`                // 1 = buy, 2 = sell
+	Segment          *int32                 `protobuf:"varint,3,opt,name=segment" json:"segment,omitempty"`          // 1 = Retail, 2 = Corporate, 3 = Treasury
+	AllowPartialFill *bool                  `protobuf:"varint,4,opt,name=allow_partial_fill,json=allowPartialFill" json:"allow_partial_fill,omitempty"`
+	ClientId         *string                `protobuf:"bytes,5,opt,name=client_id,json=clientId" json:"client_id,omitempty"`                            // client's unique identifier
+	ClientInn        *string                `protobuf:"bytes,6,opt,name=client_inn,json=clientInn" json:"client_inn,omitempty"`                         // client's INN (taxpayer identification number)
+	CurrencyPair     *string                `protobuf:"bytes,7,opt,name=currency_pair,json=currencyPair" json:"currency_pair,omitempty"`                // e.g. "USD/TJS"
+	Quantity         *string                `protobuf:"bytes,8,opt,name=quantity" json:"quantity,omitempty"`                                            // quantity is in the Base currency (the first currency in the pair)
+	LimitRate        *string                `protobuf:"bytes,9,opt,name=limit_rate,json=limitRate" json:"limit_rate,omitempty"`                         // client's rate, positive decimal string
 	OrderDay         *string                `protobuf:"bytes,10,opt,name=order_day,json=orderDay" json:"order_day,omitempty"`                           // order day 'YYYY-MM-DD'
 	MinTradeQuantity *string                `protobuf:"bytes,11,opt,name=min_trade_quantity,json=minTradeQuantity" json:"min_trade_quantity,omitempty"` // minimum trade quantity if allow_partial_fill is true, decimal string
 	unknownFields    protoimpl.UnknownFields
@@ -66,6 +66,13 @@ func (x *SubmitOrderRequest) ProtoReflect() protoreflect.Message {
 // Deprecated: Use SubmitOrderRequest.ProtoReflect.Descriptor instead.
 func (*SubmitOrderRequest) Descriptor() ([]byte, []int) {
 	return file_forex_v1_order_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *SubmitOrderRequest) GetRefId() int64 {
+	if x != nil && x.RefId != nil {
+		return *x.RefId
+	}
+	return 0
 }
 
 func (x *SubmitOrderRequest) GetSide() int32 {
@@ -120,13 +127,6 @@ func (x *SubmitOrderRequest) GetQuantity() string {
 func (x *SubmitOrderRequest) GetLimitRate() string {
 	if x != nil && x.LimitRate != nil {
 		return *x.LimitRate
-	}
-	return ""
-}
-
-func (x *SubmitOrderRequest) GetRefId() string {
-	if x != nil && x.RefId != nil {
-		return *x.RefId
 	}
 	return ""
 }
@@ -267,11 +267,11 @@ func (x *CancelOrderRequest) GetOrderDay() string {
 
 type CancelOrderResponse struct {
 	state             protoimpl.MessageState `protogen:"open.v1"`
-	Success           *bool                  `protobuf:"varint,1,opt,name=success" json:"success,omitempty"`
-	RemainingQuantity *string                `protobuf:"bytes,2,opt,name=remaining_quantity,json=remainingQuantity" json:"remaining_quantity,omitempty"` // remaining qty at cancellation, for fund release
-	OrderStatus       *int32                 `protobuf:"varint,3,opt,name=order_status,json=orderStatus" json:"order_status,omitempty"`
-	Cause             *string                `protobuf:"bytes,4,opt,name=cause" json:"cause,omitempty"`
-	RefId             *string                `protobuf:"bytes,5,opt,name=ref_id,json=refId" json:"ref_id,omitempty"`
+	RefId             *int64                 `protobuf:"varint,1,opt,name=ref_id,json=refId" json:"ref_id,omitempty"`
+	OrderStatus       *int32                 `protobuf:"varint,2,opt,name=order_status,json=orderStatus" json:"order_status,omitempty"`
+	Success           *bool                  `protobuf:"varint,3,opt,name=success" json:"success,omitempty"`
+	RemainingQuantity *string                `protobuf:"bytes,4,opt,name=remaining_quantity,json=remainingQuantity" json:"remaining_quantity,omitempty"` // remaining qty at cancellation, for fund release
+	Cause             *string                `protobuf:"bytes,5,opt,name=cause" json:"cause,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -306,6 +306,20 @@ func (*CancelOrderResponse) Descriptor() ([]byte, []int) {
 	return file_forex_v1_order_proto_rawDescGZIP(), []int{3}
 }
 
+func (x *CancelOrderResponse) GetRefId() int64 {
+	if x != nil && x.RefId != nil {
+		return *x.RefId
+	}
+	return 0
+}
+
+func (x *CancelOrderResponse) GetOrderStatus() int32 {
+	if x != nil && x.OrderStatus != nil {
+		return *x.OrderStatus
+	}
+	return 0
+}
+
 func (x *CancelOrderResponse) GetSuccess() bool {
 	if x != nil && x.Success != nil {
 		return *x.Success
@@ -320,23 +334,9 @@ func (x *CancelOrderResponse) GetRemainingQuantity() string {
 	return ""
 }
 
-func (x *CancelOrderResponse) GetOrderStatus() int32 {
-	if x != nil && x.OrderStatus != nil {
-		return *x.OrderStatus
-	}
-	return 0
-}
-
 func (x *CancelOrderResponse) GetCause() string {
 	if x != nil && x.Cause != nil {
 		return *x.Cause
-	}
-	return ""
-}
-
-func (x *CancelOrderResponse) GetRefId() string {
-	if x != nil && x.RefId != nil {
-		return *x.RefId
 	}
 	return ""
 }
@@ -498,14 +498,14 @@ func (x *FilterClientOrdersResponse) GetOrders() []*OrderInfo {
 type OrderInfo struct {
 	state             protoimpl.MessageState `protogen:"open.v1"`
 	OrderId           *int64                 `protobuf:"varint,1,opt,name=order_id,json=orderId" json:"order_id,omitempty"`
-	Side              *int32                 `protobuf:"varint,2,opt,name=side" json:"side,omitempty"`
-	Segment           *int32                 `protobuf:"varint,3,opt,name=segment" json:"segment,omitempty"`
-	Status            *int32                 `protobuf:"varint,4,opt,name=status" json:"status,omitempty"`
-	AllowPartialFill  *bool                  `protobuf:"varint,5,opt,name=allow_partial_fill,json=allowPartialFill" json:"allow_partial_fill,omitempty"`
-	CurrencyPair      *string                `protobuf:"bytes,6,opt,name=currency_pair,json=currencyPair" json:"currency_pair,omitempty"`
-	Quantity          *string                `protobuf:"bytes,7,opt,name=quantity" json:"quantity,omitempty"`
-	LimitRate         *string                `protobuf:"bytes,8,opt,name=limit_rate,json=limitRate" json:"limit_rate,omitempty"`
-	RefId             *string                `protobuf:"bytes,9,opt,name=ref_id,json=refId" json:"ref_id,omitempty"`
+	RefId             *int64                 `protobuf:"varint,2,opt,name=ref_id,json=refId" json:"ref_id,omitempty"`
+	Side              *int32                 `protobuf:"varint,3,opt,name=side" json:"side,omitempty"`
+	Segment           *int32                 `protobuf:"varint,4,opt,name=segment" json:"segment,omitempty"`
+	Status            *int32                 `protobuf:"varint,5,opt,name=status" json:"status,omitempty"`
+	AllowPartialFill  *bool                  `protobuf:"varint,6,opt,name=allow_partial_fill,json=allowPartialFill" json:"allow_partial_fill,omitempty"`
+	CurrencyPair      *string                `protobuf:"bytes,7,opt,name=currency_pair,json=currencyPair" json:"currency_pair,omitempty"`
+	Quantity          *string                `protobuf:"bytes,8,opt,name=quantity" json:"quantity,omitempty"`
+	LimitRate         *string                `protobuf:"bytes,9,opt,name=limit_rate,json=limitRate" json:"limit_rate,omitempty"`
 	MinTradeQuantity  *string                `protobuf:"bytes,10,opt,name=min_trade_quantity,json=minTradeQuantity" json:"min_trade_quantity,omitempty"`
 	RemainingQuantity *string                `protobuf:"bytes,11,opt,name=remaining_quantity,json=remainingQuantity" json:"remaining_quantity,omitempty"`
 	CreatedAt         *string                `protobuf:"bytes,12,opt,name=created_at,json=createdAt" json:"created_at,omitempty"`
@@ -547,6 +547,13 @@ func (*OrderInfo) Descriptor() ([]byte, []int) {
 func (x *OrderInfo) GetOrderId() int64 {
 	if x != nil && x.OrderId != nil {
 		return *x.OrderId
+	}
+	return 0
+}
+
+func (x *OrderInfo) GetRefId() int64 {
+	if x != nil && x.RefId != nil {
+		return *x.RefId
 	}
 	return 0
 }
@@ -596,13 +603,6 @@ func (x *OrderInfo) GetQuantity() string {
 func (x *OrderInfo) GetLimitRate() string {
 	if x != nil && x.LimitRate != nil {
 		return *x.LimitRate
-	}
-	return ""
-}
-
-func (x *OrderInfo) GetRefId() string {
-	if x != nil && x.RefId != nil {
-		return *x.RefId
 	}
 	return ""
 }
@@ -845,12 +845,11 @@ func (*SubscribeOrderEventsRequest) Descriptor() ([]byte, []int) {
 
 type SubscribeOrderEventsResponse struct {
 	state             protoimpl.MessageState `protogen:"open.v1"`
-	OrderId           *int64                 `protobuf:"varint,1,opt,name=order_id,json=orderId" json:"order_id,omitempty"`
+	RefId             *int64                 `protobuf:"varint,1,opt,name=ref_id,json=refId" json:"ref_id,omitempty"`
 	EventType         *int32                 `protobuf:"varint,2,opt,name=event_type,json=eventType" json:"event_type,omitempty"` // order status
 	EventTimestamp    *string                `protobuf:"bytes,3,opt,name=event_timestamp,json=eventTimestamp" json:"event_timestamp,omitempty"`
 	RemainingQuantity *string                `protobuf:"bytes,4,opt,name=remaining_quantity,json=remainingQuantity" json:"remaining_quantity,omitempty"`
-	RefId             *string                `protobuf:"bytes,5,opt,name=ref_id,json=refId" json:"ref_id,omitempty"`
-	OrderDay          *string                `protobuf:"bytes,6,opt,name=order_day,json=orderDay" json:"order_day,omitempty"`
+	OrderDay          *string                `protobuf:"bytes,5,opt,name=order_day,json=orderDay" json:"order_day,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -885,9 +884,9 @@ func (*SubscribeOrderEventsResponse) Descriptor() ([]byte, []int) {
 	return file_forex_v1_order_proto_rawDescGZIP(), []int{11}
 }
 
-func (x *SubscribeOrderEventsResponse) GetOrderId() int64 {
-	if x != nil && x.OrderId != nil {
-		return *x.OrderId
+func (x *SubscribeOrderEventsResponse) GetRefId() int64 {
+	if x != nil && x.RefId != nil {
+		return *x.RefId
 	}
 	return 0
 }
@@ -913,13 +912,6 @@ func (x *SubscribeOrderEventsResponse) GetRemainingQuantity() string {
 	return ""
 }
 
-func (x *SubscribeOrderEventsResponse) GetRefId() string {
-	if x != nil && x.RefId != nil {
-		return *x.RefId
-	}
-	return ""
-}
-
 func (x *SubscribeOrderEventsResponse) GetOrderDay() string {
 	if x != nil && x.OrderDay != nil {
 		return *x.OrderDay
@@ -932,18 +924,18 @@ var File_forex_v1_order_proto protoreflect.FileDescriptor
 const file_forex_v1_order_proto_rawDesc = "" +
 	"\n" +
 	"\x14forex/v1/order.proto\x12\bforex.v1\"\xee\x02\n" +
-	"\x12SubmitOrderRequest\x12\x12\n" +
-	"\x04side\x18\x01 \x01(\x05R\x04side\x12\x18\n" +
-	"\asegment\x18\x02 \x01(\x05R\asegment\x12,\n" +
-	"\x12allow_partial_fill\x18\x03 \x01(\bR\x10allowPartialFill\x12\x1b\n" +
-	"\tclient_id\x18\x04 \x01(\tR\bclientId\x12\x1d\n" +
+	"\x12SubmitOrderRequest\x12\x15\n" +
+	"\x06ref_id\x18\x01 \x01(\x03R\x05refId\x12\x12\n" +
+	"\x04side\x18\x02 \x01(\x05R\x04side\x12\x18\n" +
+	"\asegment\x18\x03 \x01(\x05R\asegment\x12,\n" +
+	"\x12allow_partial_fill\x18\x04 \x01(\bR\x10allowPartialFill\x12\x1b\n" +
+	"\tclient_id\x18\x05 \x01(\tR\bclientId\x12\x1d\n" +
 	"\n" +
-	"client_inn\x18\x05 \x01(\tR\tclientInn\x12#\n" +
-	"\rcurrency_pair\x18\x06 \x01(\tR\fcurrencyPair\x12\x1a\n" +
-	"\bquantity\x18\a \x01(\tR\bquantity\x12\x1d\n" +
+	"client_inn\x18\x06 \x01(\tR\tclientInn\x12#\n" +
+	"\rcurrency_pair\x18\a \x01(\tR\fcurrencyPair\x12\x1a\n" +
+	"\bquantity\x18\b \x01(\tR\bquantity\x12\x1d\n" +
 	"\n" +
-	"limit_rate\x18\b \x01(\tR\tlimitRate\x12\x15\n" +
-	"\x06ref_id\x18\t \x01(\tR\x05refId\x12\x1b\n" +
+	"limit_rate\x18\t \x01(\tR\tlimitRate\x12\x1b\n" +
 	"\torder_day\x18\n" +
 	" \x01(\tR\borderDay\x12,\n" +
 	"\x12min_trade_quantity\x18\v \x01(\tR\x10minTradeQuantity\"^\n" +
@@ -955,12 +947,12 @@ const file_forex_v1_order_proto_rawDesc = "" +
 	"\tclient_id\x18\x01 \x01(\tR\bclientId\x12\x19\n" +
 	"\border_id\x18\x02 \x01(\x03R\aorderId\x12\x1b\n" +
 	"\torder_day\x18\x03 \x01(\tR\borderDay\"\xae\x01\n" +
-	"\x13CancelOrderResponse\x12\x18\n" +
-	"\asuccess\x18\x01 \x01(\bR\asuccess\x12-\n" +
-	"\x12remaining_quantity\x18\x02 \x01(\tR\x11remainingQuantity\x12!\n" +
-	"\forder_status\x18\x03 \x01(\x05R\vorderStatus\x12\x14\n" +
-	"\x05cause\x18\x04 \x01(\tR\x05cause\x12\x15\n" +
-	"\x06ref_id\x18\x05 \x01(\tR\x05refId\"\x9a\x02\n" +
+	"\x13CancelOrderResponse\x12\x15\n" +
+	"\x06ref_id\x18\x01 \x01(\x03R\x05refId\x12!\n" +
+	"\forder_status\x18\x02 \x01(\x05R\vorderStatus\x12\x18\n" +
+	"\asuccess\x18\x03 \x01(\bR\asuccess\x12-\n" +
+	"\x12remaining_quantity\x18\x04 \x01(\tR\x11remainingQuantity\x12\x14\n" +
+	"\x05cause\x18\x05 \x01(\tR\x05cause\"\x9a\x02\n" +
 	"\x19FilterClientOrdersRequest\x12\x19\n" +
 	"\border_id\x18\x01 \x01(\x03R\aorderId\x12\x12\n" +
 	"\x04side\x18\x02 \x01(\x05R\x04side\x12\x16\n" +
@@ -975,16 +967,16 @@ const file_forex_v1_order_proto_rawDesc = "" +
 	"\x1aFilterClientOrdersResponse\x12+\n" +
 	"\x06orders\x18\x01 \x03(\v2\x13.forex.v1.OrderInfoR\x06orders\"\xaa\x03\n" +
 	"\tOrderInfo\x12\x19\n" +
-	"\border_id\x18\x01 \x01(\x03R\aorderId\x12\x12\n" +
-	"\x04side\x18\x02 \x01(\x05R\x04side\x12\x18\n" +
-	"\asegment\x18\x03 \x01(\x05R\asegment\x12\x16\n" +
-	"\x06status\x18\x04 \x01(\x05R\x06status\x12,\n" +
-	"\x12allow_partial_fill\x18\x05 \x01(\bR\x10allowPartialFill\x12#\n" +
-	"\rcurrency_pair\x18\x06 \x01(\tR\fcurrencyPair\x12\x1a\n" +
-	"\bquantity\x18\a \x01(\tR\bquantity\x12\x1d\n" +
+	"\border_id\x18\x01 \x01(\x03R\aorderId\x12\x15\n" +
+	"\x06ref_id\x18\x02 \x01(\x03R\x05refId\x12\x12\n" +
+	"\x04side\x18\x03 \x01(\x05R\x04side\x12\x18\n" +
+	"\asegment\x18\x04 \x01(\x05R\asegment\x12\x16\n" +
+	"\x06status\x18\x05 \x01(\x05R\x06status\x12,\n" +
+	"\x12allow_partial_fill\x18\x06 \x01(\bR\x10allowPartialFill\x12#\n" +
+	"\rcurrency_pair\x18\a \x01(\tR\fcurrencyPair\x12\x1a\n" +
+	"\bquantity\x18\b \x01(\tR\bquantity\x12\x1d\n" +
 	"\n" +
-	"limit_rate\x18\b \x01(\tR\tlimitRate\x12\x15\n" +
-	"\x06ref_id\x18\t \x01(\tR\x05refId\x12,\n" +
+	"limit_rate\x18\t \x01(\tR\tlimitRate\x12,\n" +
 	"\x12min_trade_quantity\x18\n" +
 	" \x01(\tR\x10minTradeQuantity\x12-\n" +
 	"\x12remaining_quantity\x18\v \x01(\tR\x11remainingQuantity\x12\x1d\n" +
@@ -1004,15 +996,14 @@ const file_forex_v1_order_proto_rawDesc = "" +
 	"PriceLevel\x12\x12\n" +
 	"\x04rate\x18\x01 \x01(\tR\x04rate\x12%\n" +
 	"\x0etotal_quantity\x18\x02 \x01(\tR\rtotalQuantity\"\x1d\n" +
-	"\x1bSubscribeOrderEventsRequest\"\xe4\x01\n" +
-	"\x1cSubscribeOrderEventsResponse\x12\x19\n" +
-	"\border_id\x18\x01 \x01(\x03R\aorderId\x12\x1d\n" +
+	"\x1bSubscribeOrderEventsRequest\"\xc9\x01\n" +
+	"\x1cSubscribeOrderEventsResponse\x12\x15\n" +
+	"\x06ref_id\x18\x01 \x01(\x03R\x05refId\x12\x1d\n" +
 	"\n" +
 	"event_type\x18\x02 \x01(\x05R\teventType\x12'\n" +
 	"\x0fevent_timestamp\x18\x03 \x01(\tR\x0eeventTimestamp\x12-\n" +
-	"\x12remaining_quantity\x18\x04 \x01(\tR\x11remainingQuantity\x12\x15\n" +
-	"\x06ref_id\x18\x05 \x01(\tR\x05refId\x12\x1b\n" +
-	"\torder_day\x18\x06 \x01(\tR\borderDay2\xce\x03\n" +
+	"\x12remaining_quantity\x18\x04 \x01(\tR\x11remainingQuantity\x12\x1b\n" +
+	"\torder_day\x18\x05 \x01(\tR\borderDay2\xce\x03\n" +
 	"\fOrderService\x12J\n" +
 	"\vSubmitOrder\x12\x1c.forex.v1.SubmitOrderRequest\x1a\x1d.forex.v1.SubmitOrderResponse\x12J\n" +
 	"\vCancelOrder\x12\x1c.forex.v1.CancelOrderRequest\x1a\x1d.forex.v1.CancelOrderResponse\x12\\\n" +

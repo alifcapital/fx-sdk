@@ -1,7 +1,8 @@
-CREATE TABLE orders (
+CREATE TABLE client_orders (
     submitted_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    id                      UUID PRIMARY KEY DEFAULT uuidv7(),
+    order_day               DATE NOT NULL DEFAULT CURRENT_DATE,
+    ref_id                  BIGSERIAL,
     order_id                BIGINT,                  -- remote order ID from the Core
     side                    SMALLINT NOT NULL,
     segment                 SMALLINT NOT NULL,
@@ -16,13 +17,37 @@ CREATE TABLE orders (
     client_inn              TEXT NOT NULL,           -- client's INN (tax identifier)
     cause                   TEXT,
     account                 JSONB,
-    fee                     JSONB
+    fee                     JSONB,
+    PRIMARY KEY (ref_id, order_day)
 ) WITH (
     tsdb.hypertable,
-    tsdb.partition_column = 'id',
+    tsdb.partition_column = 'order_day',
     tsdb.segmentby        = 'client_id',
-    tsdb.orderby          = 'id DESC'
+    tsdb.orderby          = 'order_day DESC'
 );
 
--- Index for duplicate order detection (2-minute window check)
-CREATE INDEX IF NOT EXISTS idx_orders_duplicate_check ON orders (client_id, side, limit_rate, quantity, submitted_at DESC);
+CREATE TABLE client_trades (
+    executed_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    trading_day           DATE NOT NULL, -- core trade day
+    trade_id              BIGINT NOT NULL, -- core trade id
+    order_id              BIGINT NOT NULL, -- core order id
+    filled_quantity       NUMERIC(28,6) NOT NULL,
+    execution_rate        NUMERIC(28,6) NOT NULL,
+    settlement            NUMERIC(28,6),
+    fee                   NUMERIC(28,6),
+    client_id             TEXT NOT NULL,
+    ack                   BOOLEAN NOT NULL DEFAULT FALSE,
+    PRIMARY KEY (trade_id, order_id, trading_day)
+) WITH (
+    tsdb.hypertable,
+    tsdb.partition_column = 'trading_day',
+    tsdb.segmentby        = 'client_id',
+    tsdb.orderby          = 'trading_day DESC'
+);
+
+-- Retention Policy is a set of rules that determines
+-- how long data should be kept and when it should be automatically deleted
+
+-- SELECT add_retention_policy('client_trades', INTERVAL '6 months');
+-- SELECT add_retention_policy('client_orders', INTERVAL '6 months');

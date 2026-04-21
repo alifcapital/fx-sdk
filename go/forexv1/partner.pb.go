@@ -104,13 +104,11 @@ func (x *GetCurrencyPairsResponse) GetCurrencyPairs() []*CurrencyPair {
 type CurrencyPair struct {
 	state            protoimpl.MessageState `protogen:"open.v1"`
 	Pair             *string                `protobuf:"bytes,1,opt,name=pair" json:"pair,omitempty"` // "USD/TJS"
-	Base             *string                `protobuf:"bytes,2,opt,name=base" json:"base,omitempty"`
-	Quote            *string                `protobuf:"bytes,3,opt,name=quote" json:"quote,omitempty"`
-	MinLot           *string                `protobuf:"bytes,4,opt,name=min_lot,json=minLot" json:"min_lot,omitempty"`
-	MinTradeQuantity *string                `protobuf:"bytes,5,opt,name=min_trade_quantity,json=minTradeQuantity" json:"min_trade_quantity,omitempty"`
-	ValidRatePercent *int32                 `protobuf:"varint,6,opt,name=valid_rate_percent,json=validRatePercent" json:"valid_rate_percent,omitempty"` // % of the rate that is considered valid
-	NbtAvgRate       *string                `protobuf:"bytes,7,opt,name=nbt_avg_rate,json=nbtAvgRate" json:"nbt_avg_rate,omitempty"`                    // NBT avg rate
-	IsActive         *bool                  `protobuf:"varint,8,opt,name=is_active,json=isActive" json:"is_active,omitempty"`
+	MinLot           *string                `protobuf:"bytes,2,opt,name=min_lot,json=minLot" json:"min_lot,omitempty"`
+	MinTradeQuantity *string                `protobuf:"bytes,3,opt,name=min_trade_quantity,json=minTradeQuantity" json:"min_trade_quantity,omitempty"`
+	ValidRatePercent *int32                 `protobuf:"varint,4,opt,name=valid_rate_percent,json=validRatePercent" json:"valid_rate_percent,omitempty"` // % of the rate that is considered valid
+	NbtAvgRate       *string                `protobuf:"bytes,5,opt,name=nbt_avg_rate,json=nbtAvgRate" json:"nbt_avg_rate,omitempty"`                    // NBT avg rate
+	IsActive         *bool                  `protobuf:"varint,6,opt,name=is_active,json=isActive" json:"is_active,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
@@ -148,20 +146,6 @@ func (*CurrencyPair) Descriptor() ([]byte, []int) {
 func (x *CurrencyPair) GetPair() string {
 	if x != nil && x.Pair != nil {
 		return *x.Pair
-	}
-	return ""
-}
-
-func (x *CurrencyPair) GetBase() string {
-	if x != nil && x.Base != nil {
-		return *x.Base
-	}
-	return ""
-}
-
-func (x *CurrencyPair) GetQuote() string {
-	if x != nil && x.Quote != nil {
-		return *x.Quote
 	}
 	return ""
 }
@@ -208,17 +192,15 @@ const file_forex_v1_partner_proto_rawDesc = "" +
 	"\x16forex/v1/partner.proto\x12\bforex.v1\"\x19\n" +
 	"\x17GetCurrencyPairsRequest\"Y\n" +
 	"\x18GetCurrencyPairsResponse\x12=\n" +
-	"\x0ecurrency_pairs\x18\x01 \x03(\v2\x16.forex.v1.CurrencyPairR\rcurrencyPairs\"\x80\x02\n" +
+	"\x0ecurrency_pairs\x18\x01 \x03(\v2\x16.forex.v1.CurrencyPairR\rcurrencyPairs\"\xd6\x01\n" +
 	"\fCurrencyPair\x12\x12\n" +
-	"\x04pair\x18\x01 \x01(\tR\x04pair\x12\x12\n" +
-	"\x04base\x18\x02 \x01(\tR\x04base\x12\x14\n" +
-	"\x05quote\x18\x03 \x01(\tR\x05quote\x12\x17\n" +
-	"\amin_lot\x18\x04 \x01(\tR\x06minLot\x12,\n" +
-	"\x12min_trade_quantity\x18\x05 \x01(\tR\x10minTradeQuantity\x12,\n" +
-	"\x12valid_rate_percent\x18\x06 \x01(\x05R\x10validRatePercent\x12 \n" +
-	"\fnbt_avg_rate\x18\a \x01(\tR\n" +
+	"\x04pair\x18\x01 \x01(\tR\x04pair\x12\x17\n" +
+	"\amin_lot\x18\x02 \x01(\tR\x06minLot\x12,\n" +
+	"\x12min_trade_quantity\x18\x03 \x01(\tR\x10minTradeQuantity\x12,\n" +
+	"\x12valid_rate_percent\x18\x04 \x01(\x05R\x10validRatePercent\x12 \n" +
+	"\fnbt_avg_rate\x18\x05 \x01(\tR\n" +
 	"nbtAvgRate\x12\x1b\n" +
-	"\tis_active\x18\b \x01(\bR\bisActive2k\n" +
+	"\tis_active\x18\x06 \x01(\bR\bisActive2k\n" +
 	"\x0ePartnerService\x12Y\n" +
 	"\x10GetCurrencyPairs\x12!.forex.v1.GetCurrencyPairsRequest\x1a\".forex.v1.GetCurrencyPairsResponseB\x8f\x01\n" +
 	"\fcom.forex.v1B\fPartnerProtoP\x01Z0github.com/alifcapital/fx/proto/forex/v1;forexv1\xa2\x02\x03FXX\xaa\x02\bForex.V1\xca\x02\bForex\\V1\xe2\x02\x14Forex\\V1\\GPBMetadata\xea\x02\tForex::V1b\beditionsp\xe8\a"

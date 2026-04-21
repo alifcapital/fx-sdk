@@ -24,12 +24,15 @@ const (
 type TradeResponse struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	Id             *int64                 `protobuf:"varint,1,opt,name=id" json:"id,omitempty"`
-	OrderStatus    *int32                 `protobuf:"varint,2,opt,name=order_status,json=orderStatus" json:"order_status,omitempty"`
-	RefId          *string                `protobuf:"bytes,3,opt,name=ref_id,json=refId" json:"ref_id,omitempty"`
-	OrderDay       *string                `protobuf:"bytes,4,opt,name=order_day,json=orderDay" json:"order_day,omitempty"`
-	FilledQuantity *string                `protobuf:"bytes,5,opt,name=filled_quantity,json=filledQuantity" json:"filled_quantity,omitempty"`
-	ExecutionRate  *string                `protobuf:"bytes,6,opt,name=execution_rate,json=executionRate" json:"execution_rate,omitempty"`
-	ExecutedAt     *string                `protobuf:"bytes,7,opt,name=executed_at,json=executedAt" json:"executed_at,omitempty"`
+	RefId          *int64                 `protobuf:"varint,2,opt,name=ref_id,json=refId" json:"ref_id,omitempty"`
+	OrderId        *int64                 `protobuf:"varint,3,opt,name=order_id,json=orderId" json:"order_id,omitempty"`
+	OrderStatus    *int32                 `protobuf:"varint,4,opt,name=order_status,json=orderStatus" json:"order_status,omitempty"`
+	Side           *int32                 `protobuf:"varint,5,opt,name=side" json:"side,omitempty"`
+	OrderDay       *string                `protobuf:"bytes,6,opt,name=order_day,json=orderDay" json:"order_day,omitempty"`
+	TradingDay     *string                `protobuf:"bytes,7,opt,name=trading_day,json=tradingDay" json:"trading_day,omitempty"`
+	FilledQuantity *string                `protobuf:"bytes,8,opt,name=filled_quantity,json=filledQuantity" json:"filled_quantity,omitempty"`
+	ExecutionRate  *string                `protobuf:"bytes,9,opt,name=execution_rate,json=executionRate" json:"execution_rate,omitempty"`
+	ExecutedAt     *string                `protobuf:"bytes,10,opt,name=executed_at,json=executedAt" json:"executed_at,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -71,6 +74,20 @@ func (x *TradeResponse) GetId() int64 {
 	return 0
 }
 
+func (x *TradeResponse) GetRefId() int64 {
+	if x != nil && x.RefId != nil {
+		return *x.RefId
+	}
+	return 0
+}
+
+func (x *TradeResponse) GetOrderId() int64 {
+	if x != nil && x.OrderId != nil {
+		return *x.OrderId
+	}
+	return 0
+}
+
 func (x *TradeResponse) GetOrderStatus() int32 {
 	if x != nil && x.OrderStatus != nil {
 		return *x.OrderStatus
@@ -78,16 +95,23 @@ func (x *TradeResponse) GetOrderStatus() int32 {
 	return 0
 }
 
-func (x *TradeResponse) GetRefId() string {
-	if x != nil && x.RefId != nil {
-		return *x.RefId
+func (x *TradeResponse) GetSide() int32 {
+	if x != nil && x.Side != nil {
+		return *x.Side
 	}
-	return ""
+	return 0
 }
 
 func (x *TradeResponse) GetOrderDay() string {
 	if x != nil && x.OrderDay != nil {
 		return *x.OrderDay
+	}
+	return ""
+}
+
+func (x *TradeResponse) GetTradingDay() string {
+	if x != nil && x.TradingDay != nil {
+		return *x.TradingDay
 	}
 	return ""
 }
@@ -115,9 +139,9 @@ func (x *TradeResponse) GetExecutedAt() string {
 
 type TradeRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	TradeId       *int64                 `protobuf:"varint,1,opt,name=trade_id,json=tradeId" json:"trade_id,omitempty"`
-	TradingDay    *string                `protobuf:"bytes,2,opt,name=trading_day,json=tradingDay" json:"trading_day,omitempty"`
-	Status        *string                `protobuf:"bytes,3,opt,name=status" json:"status,omitempty"`
+	Side          *int32                 `protobuf:"varint,1,opt,name=side" json:"side,omitempty"`
+	TradeId       *int64                 `protobuf:"varint,2,opt,name=trade_id,json=tradeId" json:"trade_id,omitempty"`
+	TradingDay    *string                `protobuf:"bytes,3,opt,name=trading_day,json=tradingDay" json:"trading_day,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -152,6 +176,13 @@ func (*TradeRequest) Descriptor() ([]byte, []int) {
 	return file_forex_v1_trade_proto_rawDescGZIP(), []int{1}
 }
 
+func (x *TradeRequest) GetSide() int32 {
+	if x != nil && x.Side != nil {
+		return *x.Side
+	}
+	return 0
+}
+
 func (x *TradeRequest) GetTradeId() int64 {
 	if x != nil && x.TradeId != nil {
 		return *x.TradeId
@@ -166,32 +197,30 @@ func (x *TradeRequest) GetTradingDay() string {
 	return ""
 }
 
-func (x *TradeRequest) GetStatus() string {
-	if x != nil && x.Status != nil {
-		return *x.Status
-	}
-	return ""
-}
-
 var File_forex_v1_trade_proto protoreflect.FileDescriptor
 
 const file_forex_v1_trade_proto_rawDesc = "" +
 	"\n" +
-	"\x14forex/v1/trade.proto\x12\bforex.v1\"\xe7\x01\n" +
+	"\x14forex/v1/trade.proto\x12\bforex.v1\"\xb7\x02\n" +
 	"\rTradeResponse\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\x03R\x02id\x12!\n" +
-	"\forder_status\x18\x02 \x01(\x05R\vorderStatus\x12\x15\n" +
-	"\x06ref_id\x18\x03 \x01(\tR\x05refId\x12\x1b\n" +
-	"\torder_day\x18\x04 \x01(\tR\borderDay\x12'\n" +
-	"\x0ffilled_quantity\x18\x05 \x01(\tR\x0efilledQuantity\x12%\n" +
-	"\x0eexecution_rate\x18\x06 \x01(\tR\rexecutionRate\x12\x1f\n" +
-	"\vexecuted_at\x18\a \x01(\tR\n" +
-	"executedAt\"b\n" +
-	"\fTradeRequest\x12\x19\n" +
-	"\btrade_id\x18\x01 \x01(\x03R\atradeId\x12\x1f\n" +
-	"\vtrading_day\x18\x02 \x01(\tR\n" +
-	"tradingDay\x12\x16\n" +
-	"\x06status\x18\x03 \x01(\tR\x06status2L\n" +
+	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x15\n" +
+	"\x06ref_id\x18\x02 \x01(\x03R\x05refId\x12\x19\n" +
+	"\border_id\x18\x03 \x01(\x03R\aorderId\x12!\n" +
+	"\forder_status\x18\x04 \x01(\x05R\vorderStatus\x12\x12\n" +
+	"\x04side\x18\x05 \x01(\x05R\x04side\x12\x1b\n" +
+	"\torder_day\x18\x06 \x01(\tR\borderDay\x12\x1f\n" +
+	"\vtrading_day\x18\a \x01(\tR\n" +
+	"tradingDay\x12'\n" +
+	"\x0ffilled_quantity\x18\b \x01(\tR\x0efilledQuantity\x12%\n" +
+	"\x0eexecution_rate\x18\t \x01(\tR\rexecutionRate\x12\x1f\n" +
+	"\vexecuted_at\x18\n" +
+	" \x01(\tR\n" +
+	"executedAt\"^\n" +
+	"\fTradeRequest\x12\x12\n" +
+	"\x04side\x18\x01 \x01(\x05R\x04side\x12\x19\n" +
+	"\btrade_id\x18\x02 \x01(\x03R\atradeId\x12\x1f\n" +
+	"\vtrading_day\x18\x03 \x01(\tR\n" +
+	"tradingDay2L\n" +
 	"\fTradeService\x12<\n" +
 	"\x05Trade\x12\x16.forex.v1.TradeRequest\x1a\x17.forex.v1.TradeResponse(\x010\x01B\x8d\x01\n" +
 	"\fcom.forex.v1B\n" +

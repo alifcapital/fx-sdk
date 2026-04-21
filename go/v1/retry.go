@@ -2,6 +2,8 @@ package v1
 
 import (
 	"context"
+	"errors"
+	"io"
 	"math/rand/v2"
 	"time"
 
@@ -54,11 +56,20 @@ func isRetryable(err error) bool {
 	}
 }
 
+// isStreamRetryable reports whether an error from a long-lived server or
+// bidirectional stream should trigger a reconnect. A clean io.EOF from the
+// server is treated as a restart signal rather than a terminal condition,
+// since subscriptions like SubscribeOrderEvents are expected to run forever.
+func isStreamRetryable(err error) bool {
+	if errors.Is(err, io.EOF) {
+		return true
+	}
+	return isRetryable(err)
+}
+
 func backoff(attempt int, base, max time.Duration) time.Duration {
 	delay := base << attempt
-	if delay > max {
-		delay = max
-	}
+	delay = min(delay, max)
 	half := delay / 2
 	if half <= 0 {
 		return delay
