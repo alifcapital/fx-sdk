@@ -3,7 +3,6 @@ CREATE TABLE client_orders (
     updated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     order_day               DATE NOT NULL DEFAULT CURRENT_DATE,
     ref_id                  BIGSERIAL,
-    order_id                BIGINT,                  -- remote order ID from the Core
     side                    SMALLINT NOT NULL,
     segment                 SMALLINT NOT NULL,
     status                  SMALLINT NOT NULL DEFAULT 1,
@@ -32,6 +31,7 @@ CREATE TABLE client_trades (
     trading_day           DATE NOT NULL, -- core trade day
     trade_id              BIGINT NOT NULL, -- core trade id
     order_id              BIGINT NOT NULL, -- core order id
+    ref_id                BIGINT NOT NULL, -- client_orders ref_id
     filled_quantity       NUMERIC(28,6) NOT NULL,
     execution_rate        NUMERIC(28,6) NOT NULL,
     settlement            NUMERIC(28,6),
@@ -51,3 +51,25 @@ CREATE TABLE client_trades (
 
 -- SELECT add_retention_policy('client_trades', INTERVAL '6 months');
 -- SELECT add_retention_policy('client_orders', INTERVAL '6 months');
+
+
+CREATE TABLE reconciliations (
+    dt DATE NOT NULL,
+    hour SMALLINT NOT NULL,
+    is_matched BOOLEAN NOT NULL, -- If hash_check match
+    info JSONB,
+    is_done BOOLEAN NOT NULL,
+    PRIMARY KEY (hour, dt)
+) WITH (
+    tsdb.hypertable,
+    tsdb.partition_column = 'dt',
+    tsdb.segmentby        = 'hour',
+    tsdb.orderby          = 'dt DESC'
+);
+-- after test maybe not needed count and sum ?
+SELECT
+    bit_xor(hashint8(trade_id) # hashint8(order_id)) as hash_check
+FROM client_trades
+WHERE trading_day = '2026-04-30'
+  AND executed_at >= '2026-04-30 10:00:00'
+  AND executed_at <  '2026-04-30 11:00:00';

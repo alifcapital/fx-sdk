@@ -85,35 +85,34 @@ func (c *Client) SubmitOrder(ctx context.Context, p *SubmitOrderParams) (*Submit
 
 	resp, err := c.order.SubmitOrder(ctx, req)
 	if err != nil {
-		// Mark the local order as Failed so it is not retried blindly. Use a
-		// distinct variable for the UPDATE error so we don't shadow the
-		// original submit error before wrapping it.
-		_, uerr := c.db.Exec(ctx,
-			`UPDATE client_orders SET status = $1, cause = $2, updated_at = NOW()
-			  WHERE ref_id = $3 AND order_day = $4`,
-			Failed, err.Error(), refId, orderDay)
-		if uerr != nil {
-			log.Printf("fx-sdk: mark order failed ref_id=%d day=%s: %v", refId, orderDay, uerr)
-		}
 		return nil, fmt.Errorf("fx-sdk: submit order: %w", err)
 	}
 
 	// 3. Reflect the Core's response into the local row.
 	orderStatus := OrderStatus(resp.GetStatus())
+
+	switch orderStatus {
+	case Pending, Duplicate, Unknown:
+		return &SubmitOrderResult{
+			RefID:    refId,
+			OrderDay: orderDay,
+			Status:   orderStatus,
+		}, nil
+	default:
+	}
+
 	cmd, err := c.db.Exec(ctx,
-		`UPDATE client_orders SET status = $1, cause = $2, order_id = $3, updated_at = NOW()
-		  WHERE ref_id = $4 AND order_day = $5`,
-		orderStatus, resp.GetCause(), resp.GetOrderId(), refId, orderDay)
+		`UPDATE client_orders SET status = $1, cause = $2, updated_at = NOW()
+		  WHERE ref_id = $3 AND order_day = $4`, orderStatus, resp.GetCause(), refId, orderDay)
 	if err != nil {
-		return nil, fmt.Errorf("fx-sdk: submit order: %w", err)
+		log.Println("fx-sdk: submit order update: ", err)
 	}
 	if cmd.RowsAffected() != 1 {
-		return nil, fmt.Errorf("fx-sdk: submit order: expected 1 row affected, got %d", cmd.RowsAffected())
+		log.Println("fx-sdk: submit order: expected 1 row affected, got: ", cmd.RowsAffected())
 	}
 
 	return &SubmitOrderResult{
 		RefID:    refId,
-		OrderID:  resp.GetOrderId(),
 		OrderDay: orderDay,
 		Status:   orderStatus,
 		Cause:    resp.GetCause(),
@@ -187,9 +186,6 @@ func (c *Client) FilterClientOrders(ctx context.Context, p *FilterClientOrdersPa
 		OrderDayFrom: &from,
 		OrderDayTo:   &to,
 	}
-	if p.OrderID != 0 {
-		req.OrderId = &p.OrderID
-	}
 	if p.Side != 0 {
 		req.Side = new(int32(p.Side))
 	}
@@ -214,8 +210,8 @@ func (c *Client) FilterClientOrders(ctx context.Context, p *FilterClientOrdersPa
 	out := &FilterClientOrdersResult{
 		Orders: make([]Order, 0, len(resp.GetOrders())),
 	}
-	for _, o := range resp.GetOrders() {
 
+	for _, o := range resp.GetOrders() {
 		out.Orders = append(out.Orders, Order{
 			OrderID:           o.GetOrderId(),
 			Side:              Side(o.GetSide()),

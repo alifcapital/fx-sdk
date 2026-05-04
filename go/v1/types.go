@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/alifcapital/fx-sdk/go/pkg"
 	"github.com/govalues/decimal"
 )
 
@@ -12,6 +13,7 @@ import (
 type OrderStatus int8
 
 const (
+	Unknown            OrderStatus = 0
 	Pending            OrderStatus = 1
 	FilledPartially    OrderStatus = 2
 	Filled             OrderStatus = 3
@@ -22,7 +24,6 @@ const (
 	ExpiredPartially   OrderStatus = 8
 	Rejected           OrderStatus = 9
 	Duplicate          OrderStatus = 10
-	Unknown            OrderStatus = 11
 )
 
 var (
@@ -68,7 +69,6 @@ type SubmitOrderParams struct {
 // SubmitOrderResult contains the result of a submitted order.
 type SubmitOrderResult struct {
 	RefID    int64       // local client_orders.id used as ref_id (idempotency key); stringified on the wire
-	OrderID  int64       // remote order ID assigned by the Core
 	OrderDay string      // YYYY-MM-DD; value of the local client_orders.order_day column
 	Status   OrderStatus // status returned by the Core
 	Cause    string      // reason if the order was rejected/failed
@@ -95,7 +95,7 @@ type CancelOrderResult struct {
 // them to today and today+1 (YYYY-MM-DD) respectively.
 type FilterClientOrdersParams struct {
 	ClientID     string // required
-	OrderID      int64  // optional; 0 means unset
+	RefID        int64  // optional; 0 means unset
 	Side         Side   // optional; 0 means unset
 	Status       OrderStatus
 	CurrencyPair string
@@ -189,7 +189,6 @@ type TradeEvent struct {
 }
 
 func (e *TradeEvent) Cal() error {
-	sad, _ := decimal.New(100, 0)
 	qty, err := decimal.Parse(e.FilledQuantity)
 	if err != nil {
 		return fmt.Errorf("parse filled_quantity: %w", err)
@@ -211,11 +210,7 @@ func (e *TradeEvent) Cal() error {
 	if err != nil {
 		return fmt.Errorf("parse fee.fixed: %w", err)
 	}
-	e.Fee, err = m.Mul(e.Fee)
-	if err != nil {
-		return fmt.Errorf("compute fee: %w", err)
-	}
-	e.Fee, err = e.Fee.Quo(sad)
+	e.Fee, err = pkg.Percentage(m, e.Fee)
 	if err != nil {
 		return fmt.Errorf("compute fee: %w", err)
 	}

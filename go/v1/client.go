@@ -7,6 +7,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/metadata"
 
 	"github.com/alifcapital/fx-sdk/go/forexv1"
@@ -85,7 +86,7 @@ func New(target string, partnerId, apiKey string, db *pgxpool.Pool, opts ...Opti
 
 	md := metadata.Pairs("partner-id", partnerId, "api-key", apiKey)
 
-	dialOpts := make([]grpc.DialOption, 0, len(cfg.dialOpts)+2)
+	dialOpts := make([]grpc.DialOption, 0, len(cfg.dialOpts)+3)
 	dialOpts = append(dialOpts,
 		grpc.WithChainUnaryInterceptor(
 			authUnaryInterceptor(md),
@@ -94,6 +95,15 @@ func New(target string, partnerId, apiKey string, db *pgxpool.Pool, opts ...Opti
 		grpc.WithChainStreamInterceptor(
 			authStreamInterceptor(md),
 		),
+		// Keep long-lived subscription streams (SubscribeOrderEvents,
+		// SubscribeTrades) alive through idle periods. Without this, proxies
+		// and NATs drop the idle TCP connection and the client sees
+		// "Unavailable: error reading from server: EOF".
+		grpc.WithKeepaliveParams(keepalive.ClientParameters{
+			Time:                30 * time.Second,
+			Timeout:             10 * time.Second,
+			PermitWithoutStream: true,
+		}),
 	)
 	dialOpts = append(dialOpts, cfg.dialOpts...)
 
