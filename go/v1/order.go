@@ -16,8 +16,12 @@ import (
 // TimescaleDB hypertable can prune to a single partition.
 func (c *Client) SubmitOrder(ctx context.Context, p *SubmitOrderParams) (*SubmitOrderResult, error) {
 
-	if p == nil || p.ClientID == "" {
+	if p == nil || p.ClientId == "" {
 		return nil, ErrClientIDRequired
+	}
+
+	if p.PartnerId == "" {
+		return nil, ErrPartnerIDRequired
 	}
 
 	if p.Segment < Retail || p.Segment > Treasury {
@@ -25,17 +29,19 @@ func (c *Client) SubmitOrder(ctx context.Context, p *SubmitOrderParams) (*Submit
 	}
 	// 0. Check for duplicates in the last 2 minutes.
 	// Scoped to today's partition so the hypertable only scans a single chunk.
+	// it is like rate limiter
 	var exists bool
 	err := c.db.QueryRow(ctx,
 		`SELECT EXISTS (
 			SELECT 1 FROM client_orders
 			WHERE order_day = CURRENT_DATE
 			  AND submitted_at > NOW() - INTERVAL '2 minutes'
-			  AND client_id = $3
+			  AND partner_id = $3
+			  AND client_id = $4
 			  AND side = $1
 			  AND limit_rate = $2
-			  AND quantity = $4
-			  AND currency_pair = $5);`, p.Side, p.LimitRate, p.ClientID, p.Quantity, p.CurrencyPair).Scan(&exists)
+			  AND quantity = $5
+			  AND currency_pair = $6);`, p.Side, p.LimitRate, p.PartnerId, p.ClientId, p.Quantity, p.CurrencyPair).Scan(&exists)
 	if err != nil {
 		return nil, fmt.Errorf("fx-sdk: check duplicate: %w", err)
 	}
@@ -52,15 +58,15 @@ func (c *Client) SubmitOrder(ctx context.Context, p *SubmitOrderParams) (*Submit
 	)
 	err = c.db.QueryRow(ctx,
 		`INSERT INTO client_orders (side, segment, quantity, limit_rate, remaining_quantity,
-		                            min_trade_quantity, allow_partial_fill, currency_pair,
+		                            min_trade_quantity, allow_partial_fill, currency_pair, partner_id,
 		                            client_id, client_inn, account, fee)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
 		 RETURNING ref_id, to_char(order_day, 'YYYY-MM-DD');`,
 		p.Side, p.Segment,
 		p.Quantity, p.LimitRate, p.Quantity, // remaining_quantity starts equal to quantity
 		p.MinTradeQuantity,
 		p.AllowPartialFill,
-		p.CurrencyPair, p.ClientID, p.ClientINN,
+		p.CurrencyPair, p.PartnerId, p.ClientId, p.ClientINN,
 		p.Account, p.Fee,
 	).Scan(&refId, &orderDay)
 	if err != nil {
@@ -73,7 +79,7 @@ func (c *Client) SubmitOrder(ctx context.Context, p *SubmitOrderParams) (*Submit
 		Side:             new(int32(p.Side)),
 		Segment:          new(int32(p.Segment)),
 		AllowPartialFill: new(p.AllowPartialFill),
-		ClientId:         &p.ClientID,
+		ClientId:         &p.ClientId,
 		ClientInn:        &p.ClientINN,
 		CurrencyPair:     &p.CurrencyPair,
 		Quantity:         &p.Quantity,
@@ -81,6 +87,7 @@ func (c *Client) SubmitOrder(ctx context.Context, p *SubmitOrderParams) (*Submit
 		RefId:            &refId,
 		OrderDay:         &orderDay,
 		MinTradeQuantity: &p.MinTradeQuantity,
+		PartnerId:        &p.PartnerId,
 	}
 
 	resp, err := c.order.SubmitOrder(ctx, req)
@@ -94,7 +101,7 @@ func (c *Client) SubmitOrder(ctx context.Context, p *SubmitOrderParams) (*Submit
 	switch orderStatus {
 	case Pending, Duplicate, Unknown:
 		return &SubmitOrderResult{
-			RefID:    refId,
+			RefId:    refId,
 			OrderDay: orderDay,
 			Status:   orderStatus,
 		}, nil
@@ -112,7 +119,7 @@ func (c *Client) SubmitOrder(ctx context.Context, p *SubmitOrderParams) (*Submit
 	}
 
 	return &SubmitOrderResult{
-		RefID:    refId,
+		RefId:    refId,
 		OrderDay: orderDay,
 		Status:   orderStatus,
 		Cause:    resp.GetCause(),
@@ -121,19 +128,23 @@ func (c *Client) SubmitOrder(ctx context.Context, p *SubmitOrderParams) (*Submit
 
 // CancelOrder sends a cancellation request to the Core for an existing order.
 func (c *Client) CancelOrder(ctx context.Context, p *CancelOrderParams) (*CancelOrderResult, error) {
-	if p == nil || p.ClientID == "" {
+	if p == nil || p.ClientId == "" {
 		return nil, ErrClientIDRequired
 	}
-	if p.OrderID == 0 {
+	if p.PartnerId == "" {
+		return nil, ErrPartnerIDRequired
+	}
+	if p.OrderId == 0 {
 		return nil, fmt.Errorf("fx-sdk: cancel order: order_id is required")
 	}
 	if p.OrderDay == "" {
 		return nil, fmt.Errorf("fx-sdk: cancel order: order_day is required")
 	}
 	req := &forexv1.CancelOrderRequest{
-		ClientId: &p.ClientID,
-		OrderId:  &p.OrderID,
-		OrderDay: &p.OrderDay,
+		ClientId:  &p.ClientId,
+		OrderId:   &p.OrderId,
+		OrderDay:  &p.OrderDay,
+		PartnerId: &p.PartnerId,
 	}
 
 	resp, err := c.order.CancelOrder(ctx, req)
@@ -157,7 +168,7 @@ func (c *Client) CancelOrder(ctx context.Context, p *CancelOrderParams) (*Cancel
 		RemainingQuantity: resp.GetRemainingQuantity(),
 		Status:            orderStatus,
 		Cause:             resp.GetCause(),
-		RefID:             resp.GetRefId(),
+		RefId:             resp.GetRefId(),
 	}, nil
 }
 
@@ -165,8 +176,12 @@ func (c *Client) CancelOrder(ctx context.Context, p *CancelOrderParams) (*Cancel
 // filters. ClientID is mandatory. If OrderDayFrom or OrderDayTo is empty, the
 // SDK defaults them to today and today+1 (YYYY-MM-DD) respectively.
 func (c *Client) FilterClientOrders(ctx context.Context, p *FilterClientOrdersParams) (*FilterClientOrdersResult, error) {
-	if p == nil || p.ClientID == "" {
+	if p == nil || p.ClientId == "" {
 		return nil, ErrClientIDRequired
+	}
+
+	if p.PartnerId == "" {
+		return nil, ErrPartnerIDRequired
 	}
 
 	from := p.OrderDayFrom
@@ -182,9 +197,10 @@ func (c *Client) FilterClientOrders(ctx context.Context, p *FilterClientOrdersPa
 	}
 
 	req := &forexv1.FilterClientOrdersRequest{
-		ClientId:     &p.ClientID,
+		ClientId:     &p.ClientId,
 		OrderDayFrom: &from,
 		OrderDayTo:   &to,
+		PartnerId:    &p.PartnerId,
 	}
 	if p.Side != 0 {
 		req.Side = new(int32(p.Side))
@@ -213,7 +229,7 @@ func (c *Client) FilterClientOrders(ctx context.Context, p *FilterClientOrdersPa
 
 	for _, o := range resp.GetOrders() {
 		out.Orders = append(out.Orders, Order{
-			OrderID:           o.GetOrderId(),
+			OrderId:           o.GetOrderId(),
 			Side:              Side(o.GetSide()),
 			Segment:           Segment(o.GetSegment()),
 			Status:            OrderStatus(o.GetStatus()),
@@ -221,7 +237,7 @@ func (c *Client) FilterClientOrders(ctx context.Context, p *FilterClientOrdersPa
 			CurrencyPair:      o.GetCurrencyPair(),
 			Quantity:          o.GetQuantity(),
 			LimitRate:         o.GetLimitRate(),
-			RefID:             o.GetRefId(),
+			RefId:             o.GetRefId(),
 			MinTradeQuantity:  o.GetMinTradeQuantity(),
 			RemainingQuantity: o.GetRemainingQuantity(),
 			CreatedAt:         o.GetCreatedAt(),
@@ -240,10 +256,10 @@ func (c *Client) FilterClientOrders(ctx context.Context, p *FilterClientOrdersPa
 // subscription that is making progress survives arbitrarily many reconnects.
 // The method returns only when ctx is cancelled, the error is not retryable,
 // or maxRetries consecutive reconnect attempts have failed.
-func (c *Client) SubscribeOrderEvents(ctx context.Context, handler OrderEventHandler) error {
+func (c *Client) SubscribeOrderEvents(ctx context.Context, partnerId string, handler OrderEventHandler) error {
 	attempt := 0
 	for {
-		err := c.runOrderEventStream(ctx, handler, &attempt)
+		err := c.runOrderEventStream(ctx, partnerId, handler, &attempt)
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
@@ -270,8 +286,10 @@ func (c *Client) SubscribeOrderEvents(ctx context.Context, handler OrderEventHan
 // events until the stream returns an error. On every successful Recv the
 // caller's attempt counter is reset so transient flaps do not accumulate
 // toward the reconnect cap.
-func (c *Client) runOrderEventStream(ctx context.Context, handler OrderEventHandler, attempt *int) error {
-	stream, err := c.order.SubscribeOrderEvents(ctx, &forexv1.SubscribeOrderEventsRequest{})
+func (c *Client) runOrderEventStream(ctx context.Context, partnerId string, handler OrderEventHandler, attempt *int) error {
+	stream, err := c.order.SubscribeOrderEvents(ctx, &forexv1.SubscribeOrderEventsRequest{
+		PartnerId: &partnerId,
+	})
 	if err != nil {
 		return err
 	}
@@ -283,10 +301,11 @@ func (c *Client) runOrderEventStream(ctx context.Context, handler OrderEventHand
 		*attempt = 0
 
 		event := &OrderEvent{
+			RefId:             resp.GetRefId(),
 			EventType:         OrderStatus(resp.GetEventType()),
 			EventTimestamp:    resp.GetEventTimestamp(),
 			RemainingQuantity: resp.GetRemainingQuantity(),
-			RefID:             resp.GetRefId(),
+			PartnerId:         resp.GetPartnerId(),
 		}
 
 		// Order events don't carry order_day, so we fall back to ref_id-only
@@ -311,17 +330,21 @@ func (c *Client) runOrderEventStream(ctx context.Context, handler OrderEventHand
 
 // GetOrderBookDepth returns the aggregated order book (bids and asks) for a given currency pair.
 func (c *Client) GetOrderBookDepth(ctx context.Context, p *GetOrderBookDepthParams) (*GetOrderBookDepthResult, error) {
-	if p.ClientID == "" {
-		return nil, fmt.Errorf("fx-sdk: get order book depth: client_id is required")
+	if p == nil || p.ClientId == "" {
+		return nil, ErrClientIDRequired
 	}
 	if p.Segment < Retail || p.Segment > Treasury {
 		return nil, fmt.Errorf("fx-sdk: get order book depth: segment is required")
 	}
+	if p.PartnerId == "" {
+		return nil, ErrPartnerIDRequired
+	}
 	req := &forexv1.GetOrderBookDepthRequest{
 		Segment:      new(int32(p.Segment)),
 		MaxLevels:    &p.MaxLevels,
-		ClientId:     &p.ClientID,
+		ClientId:     &p.ClientId,
 		CurrencyPair: &p.CurrencyPair,
+		PartnerId:    &p.PartnerId,
 	}
 
 	resp, err := c.order.GetOrderBookDepth(ctx, req)

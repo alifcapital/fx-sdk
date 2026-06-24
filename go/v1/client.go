@@ -59,14 +59,14 @@ func WithDialOptions(opts ...grpc.DialOption) Option {
 
 // New creates a new FX SDK client.
 // target is the gRPC server address (e.g. "fx-core.example.com:443").
-// partnerId and apiKey are sent as gRPC metadata on every request.
+// sdkId and apiKey are sent as gRPC metadata on every request.
 // db is the pgxpool connection pool for the local orders table.
-func New(target string, partnerId, apiKey string, db *pgxpool.Pool, opts ...Option) (*Client, error) {
+func New(target, sdkId, apiKey, partnerId string, db *pgxpool.Pool, opts ...Option) (*Client, error) {
 	if target == "" {
 		return nil, fmt.Errorf("fx-sdk: target is required")
 	}
-	if ln := len(partnerId); ln != 36 {
-		return nil, fmt.Errorf("fx-sdk: partner_id is invalid")
+	if ln := len(sdkId); ln != 36 {
+		return nil, fmt.Errorf("fx-sdk: sdk_id is invalid")
 	}
 	if apiKey == "" {
 		return nil, fmt.Errorf("fx-sdk: api_key is required")
@@ -84,7 +84,7 @@ func New(target string, partnerId, apiKey string, db *pgxpool.Pool, opts ...Opti
 		o(&cfg)
 	}
 
-	md := metadata.Pairs("partner-id", partnerId, "api-key", apiKey)
+	md := metadata.Pairs("key-id", sdkId, "api-key", apiKey, "partner-id", partnerId)
 
 	dialOpts := make([]grpc.DialOption, 0, len(cfg.dialOpts)+3)
 	dialOpts = append(dialOpts,

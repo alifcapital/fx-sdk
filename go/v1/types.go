@@ -31,6 +31,8 @@ var (
 	ErrDuplicateOrder = errors.New("fx-sdk: duplicate order detected within 2 minutes")
 	// ErrClientIDRequired is returned when client_id is not provided.
 	ErrClientIDRequired = errors.New("fx-sdk: client_id is required")
+	// ErrPartnerIDRequired is returned when partner_id is not provided.
+	ErrPartnerIDRequired = errors.New("fx-sdk: partner_id is required")
 )
 
 // Side represents the order direction.
@@ -56,7 +58,8 @@ type SubmitOrderParams struct {
 	Side             Side
 	Segment          Segment
 	AllowPartialFill bool
-	ClientID         string
+	PartnerId        string
+	ClientId         string
 	ClientINN        string
 	CurrencyPair     string
 	Quantity         string // decimal string, e.g. "1000.00"
@@ -68,7 +71,7 @@ type SubmitOrderParams struct {
 
 // SubmitOrderResult contains the result of a submitted order.
 type SubmitOrderResult struct {
-	RefID    int64       // local client_orders.id used as ref_id (idempotency key); stringified on the wire
+	RefId    int64       // local client_orders.id used as ref_id (idempotency key); stringified on the wire
 	OrderDay string      // YYYY-MM-DD; value of the local client_orders.order_day column
 	Status   OrderStatus // status returned by the Core
 	Cause    string      // reason if the order was rejected/failed
@@ -76,9 +79,10 @@ type SubmitOrderResult struct {
 
 // CancelOrderParams contains the parameters for cancelling an existing order.
 type CancelOrderParams struct {
-	ClientID string
-	OrderID  int64
-	OrderDay string
+	PartnerId string
+	ClientId  string
+	OrderId   int64
+	OrderDay  string
 }
 
 // CancelOrderResult contains the result of a cancelled order.
@@ -87,15 +91,16 @@ type CancelOrderResult struct {
 	RemainingQuantity string      // remaining qty at cancellation, for fund release
 	Status            OrderStatus // updated order status
 	Cause             string      // reason if cancellation failed
-	RefID             int64       // local client_orders.id associated with the order
+	RefId             int64       // local client_orders.id associated with the order
 }
 
 // FilterClientOrdersParams contains the parameters for querying a client's orders.
 // ClientID is mandatory. If OrderDayFrom or OrderDayTo is empty, the SDK defaults
 // them to today and today+1 (YYYY-MM-DD) respectively.
 type FilterClientOrdersParams struct {
-	ClientID     string // required
-	RefID        int64  // optional; 0 means unset
+	PartnerId    string // required
+	ClientId     string // required
+	RefId        int64  // optional; 0 means unset
 	Side         Side   // optional; 0 means unset
 	Status       OrderStatus
 	CurrencyPair string
@@ -107,7 +112,7 @@ type FilterClientOrdersParams struct {
 
 // Order is the SDK-level representation of a single order returned by the Core.
 type Order struct {
-	OrderID           int64
+	OrderId           int64
 	Side              Side
 	Segment           Segment
 	Status            OrderStatus
@@ -115,7 +120,7 @@ type Order struct {
 	CurrencyPair      string
 	Quantity          string
 	LimitRate         string
-	RefID             int64 // local client_orders.id; 0 if the Core returned an empty or unparseable ref_id
+	RefId             int64 // local client_orders.id; 0 if the Core returned an empty or unparseable ref_id
 	MinTradeQuantity  string
 	RemainingQuantity string
 	CreatedAt         string
@@ -124,10 +129,11 @@ type Order struct {
 
 // OrderEvent represents an event received from the Core via SubscribeOrderEvents.
 type OrderEvent struct {
+	RefId             int64 // local client_orders.id
 	EventType         OrderStatus
 	EventTimestamp    string
 	RemainingQuantity string
-	RefID             int64 // local client_orders.id
+	PartnerId         string
 }
 
 // GetReleaseAmount returns the remaining quantity if the event is an expiration or cancellation,
@@ -153,8 +159,9 @@ type FilterClientOrdersResult struct {
 type GetOrderBookDepthParams struct {
 	Segment      Segment
 	MaxLevels    int32
-	ClientID     string
+	ClientId     string
 	CurrencyPair string
+	PartnerId    string
 }
 
 // PriceLevel represents a single price level in the order book.
@@ -173,13 +180,15 @@ type GetOrderBookDepthResult struct {
 // with data from the parent order (client, side, currency pair, account, fee
 // config) and with the settlement/fee values already computed and persisted.
 type TradeEvent struct {
-	TradeID        int64
+	TradeId        int64
+	OrderId        int64 // core order id; part of the client_trades primary key
 	OrderStatus    OrderStatus
 	TradingDay     string // YYYY-MM-DD
 	FilledQuantity string // base-currency amount filled by this trade
 	ExecutionRate  string // rate at which the fill occurred
 	ExecutedAt     string // server-side execution timestamp
-	ClientID       string
+	PartnerId      string
+	ClientId       string
 	CurrencyPair   string
 	Side           Side
 	Account        map[string]string // account JSONB stored on the parent order
@@ -220,17 +229,29 @@ func (e *TradeEvent) Cal() error {
 		if err != nil {
 			return fmt.Errorf("compute settlement: %w", err)
 		}
+		e.Settlement = e.Settlement.Round(6)
 		return nil
 	}
 	e.Settlement, err = m.Sub(e.Fee)
 	if err != nil {
 		return fmt.Errorf("compute settlement: %w", err)
 	}
+	e.Settlement = e.Settlement.Round(6)
 	return nil
 }
 
 // TradeEventHandler performs the partner-side processing for a trade — typically
 // debit/credit of the client's accounts based on TradeEvent.Account and the
-// computed Settlement/Fee. Returning a non-nil error causes the SDK to ack the
-// trade back to the Core as "failed" and mark the local trades row accordingly.
+// computed Settlement/Fee.
+//
+// The trade has already been durably stored before the handler runs, so a
+// returned error does NOT change what the SDK acks to the Core (the ack only
+// means "received & stored"). Instead the trade is left settled = FALSE with the
+// error recorded, and RetryUnsettled re-runs the handler until it succeeds.
+//
+// IMPORTANT: the handler MUST be idempotent. The same trade
+// (trade_id, order_id, trading_day) may be presented more than once — on Core
+// redelivery after a reconnect, or on retry after a failure or restart. The
+// partner's account movement must no-op if it has already been applied for that
+// trade.
 type TradeEventHandler func(ctx context.Context, event *TradeEvent) error

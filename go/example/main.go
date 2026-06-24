@@ -31,18 +31,19 @@ import (
 func main() {
 	var (
 		target    = flag.String("target", "192.168.97.7:80", "FX Core gRPC address")
-		partnerID = flag.String("partner-id", "019d99bd-24db-7a04-b237-76a89e84375b", "partner identifier")
-		apiKey    = flag.String("api-key", "tmSh1BqPuChtU1VSj5fTAip1FR6nueMK2Vdd+JlgiKbpyx5bv5vFBmMtYcT7+qerMYo1ukpFikZXsQ+cS7psDQ==", "API key")
-		dsn       = flag.String("dsn", "postgres://postgres:pas123@192.168.215.2:5432/fxdb?sslmode=disable", "Postgres DSN for the local orders table")
-		clientID  = flag.String("client-id", "1263", "client identifier (required for filter)")
-		clientINN = flag.String("client-inn", "07128313", "client INN (taxpayer ID)")
+		sdkId     = flag.String("sdk-id", "019eee39-cc7f-722e-a3f1-c2c010b141a4", "SDK identifier")
+		apiKey    = flag.String("api-key", "qt4AiUntt6bSOb4326CBbRSU2PfoihuvBbMzMS4KhRROsyjg8HZAjFmvdRWD26+afrCDuqfxgn5JXzld5tHSDg==", "API key")
+		dsn       = flag.String("dsn", "postgres://postgres:pass123@192.168.215.2:5432/fxdb?sslmode=disable", "Postgres DSN for the local orders table")
+		partnerId = flag.String("partner-id", "019eee2d-d765-7273-8582-ab6982339896", "partner identifier")
+		clientId  = flag.String("client-id", "1271", "client identifier (required for filter)")
+		clientINN = flag.String("client-inn", "07128321", "client INN (taxpayer ID)")
 		insecureC = flag.Bool("insecure", true, "use plaintext gRPC (dev only)")
 		cancel    = flag.Bool("cancel", false, "cancel the order after submission")
 	)
 	flag.Parse()
 
-	if *partnerID == "" || *apiKey == "" || *dsn == "" || *clientID == "" || *clientINN == "" {
-		log.Fatal("partner-id, api-key, dsn, client-id and client-inn are required")
+	if *sdkId == "" || *apiKey == "" || *dsn == "" || *clientId == "" || *clientINN == "" {
+		log.Fatal("sdk-id, api-key, dsn, client-id and client-inn are required")
 	}
 
 	g, ctx := errgroup.WithContext(context.Background())
@@ -68,7 +69,7 @@ func main() {
 		))
 	}
 
-	client, err := v1.New(*target, *partnerID, *apiKey, pool, opts...)
+	client, err := v1.New(*target, *sdkId, *apiKey, *partnerId, pool, opts...)
 	if err != nil {
 		log.Fatalf("new client: %v", err)
 	}
@@ -78,7 +79,7 @@ func main() {
 	// This will receive real-time updates for any order status changes.
 	g.Go(func() error {
 		log.Printf("starting order events subscription...")
-		err := client.SubscribeOrderEvents(ctx, handleOrderEvent)
+		err := client.SubscribeOrderEvents(ctx, *partnerId, handleOrderEvent)
 		if err != nil && ctx.Err() == nil {
 			log.Printf("subscription error: %v", err)
 		}
@@ -97,10 +98,31 @@ func main() {
 		return err
 	})
 
+	// 0c. Drain any trades that were stored but not settled (handler failure,
+	// or a crash after ack but before settlement) on startup, then keep
+	// retrying them on a ticker. handleTrade must be idempotent.
+	g.Go(func() error {
+		if err := client.RetryUnsettled(ctx, handleTrade); err != nil {
+			log.Printf("retry unsettled (startup): %v", err)
+		}
+		t := time.NewTicker(time.Minute)
+		defer t.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-t.C:
+				if err := client.RetryUnsettled(ctx, handleTrade); err != nil {
+					log.Printf("retry unsettled: %v", err)
+				}
+			}
+		}
+	})
+
 	var acc = make(map[string]string)
 	// account details
-	acc["debit_account"] = "1263"
-	acc["credit_account"] = "4563"
+	acc["debit_account"] = "1271"
+	acc["credit_account"] = "4571"
 	var fee = make(map[string]string)
 	// fixed fee in percentage
 	fee["fixed"] = "0.05"
@@ -110,11 +132,12 @@ func main() {
 		Side:             v1.Buy,
 		Segment:          v1.Retail,
 		AllowPartialFill: true,
-		ClientID:         *clientID,
+		PartnerId:        *partnerId,
+		ClientId:         *clientId,
 		ClientINN:        *clientINN,
 		CurrencyPair:     "USD/TJS",
 		Quantity:         "1000.00",
-		LimitRate:        "9.438",
+		LimitRate:        "9.31",
 		MinTradeQuantity: "100.00",
 		Account:          acc,
 		Fee:              fee,
@@ -126,32 +149,34 @@ func main() {
 		log.Fatalf("submit order: %v", err)
 	default:
 		log.Printf("submitted: ref_id=%d order_day=%s status=%d cause=%q",
-			submitted.RefID, submitted.OrderDay, submitted.Status, submitted.Cause)
+			submitted.RefId, submitted.OrderDay, submitted.Status, submitted.Cause)
 	}
 
 	// 2. Filter the client's orders. ClientID is mandatory; the SDK defaults
 	// OrderDayFrom/To to today and today+1 when both are empty.
 	filtered, err := client.FilterClientOrders(ctx, &v1.FilterClientOrdersParams{
-		ClientID:     *clientID,
+		PartnerId:    *partnerId,
+		ClientId:     *clientId,
 		CurrencyPair: "USD/TJS",
 		Limit:        50,
 	})
 	if err != nil {
 		log.Fatalf("filter orders: %v", err)
 	}
-	log.Printf("found %d orders for client %s", len(filtered.Orders), *clientID)
+	log.Printf("found %d orders for client %s", len(filtered.Orders), *clientId)
 	for _, o := range filtered.Orders {
 		log.Printf("  order_id=%d day=%s side=%d status=%d qty=%s remaining=%s rate=%s ref=%d",
-			o.OrderID, o.OrderDay, o.Side, o.Status,
-			o.Quantity, o.RemainingQuantity, o.LimitRate, o.RefID)
+			o.OrderId, o.OrderDay, o.Side, o.Status,
+			o.Quantity, o.RemainingQuantity, o.LimitRate, o.RefId)
 	}
 
-	// 4. Get order book depth.
+	// 3. Get order book depth.
 	depth, err := client.GetOrderBookDepth(ctx, &v1.GetOrderBookDepthParams{
 		Segment:      v1.Retail,
 		MaxLevels:    10,
-		ClientID:     *clientID,
+		ClientId:     *clientId,
 		CurrencyPair: "USD/TJS",
+		PartnerId:    *partnerId,
 	})
 	if err != nil {
 		log.Printf("get order book depth error: %v", err)
@@ -167,12 +192,13 @@ func main() {
 		}
 	}
 
-	// 3. Cancel the order we just submitted (only if the submit succeeded).
+	// 4. Cancel the order we just submitted (only if the submit succeeded).
 	if *cancel && submitted != nil {
 		cancelled, err := client.CancelOrder(ctx, &v1.CancelOrderParams{
-			ClientID: *clientID,
-			OrderID:  123213,
-			OrderDay: submitted.OrderDay,
+			PartnerId: *partnerId,
+			ClientId:  *clientId,
+			OrderId:   submitted.RefId,
+			OrderDay:  submitted.OrderDay,
 		})
 		if err != nil {
 			log.Fatalf("cancel order: %v", err)
@@ -188,8 +214,8 @@ func main() {
 }
 
 func handleTrade(ctx context.Context, ev *v1.TradeEvent) error {
-	log.Printf("TRADE: id=%d  day=%s filled=%s rate=%s settlement=%s fee=%s side=%d pair=%s",
-		ev.TradeID, ev.TradingDay, ev.FilledQuantity, ev.ExecutionRate,
+	log.Printf("TRADE: id=%d order=%d side=%d order_status=%d  day=%s filled=%s rate=%s settlement=%s fee=%s side=%d pair=%s",
+		ev.TradeId, ev.OrderId, ev.Side, ev.OrderStatus, ev.TradingDay, ev.FilledQuantity, ev.ExecutionRate,
 		ev.Settlement, ev.Fee, ev.Side, ev.CurrencyPair)
 	log.Printf("  accounts: debit=%s credit=%s -> move %s %s (fee %s)",
 		ev.Account["debit_account"], ev.Account["credit_account"], ev.Settlement, ev.CurrencyPair, ev.Fee)
@@ -198,5 +224,5 @@ func handleTrade(ctx context.Context, ev *v1.TradeEvent) error {
 
 func handleOrderEvent(event *v1.OrderEvent) {
 	log.Printf("EVENT: ref_id=%d type=%d ts=%s remaining=%s",
-		event.RefID, event.EventType, event.EventTimestamp, event.RemainingQuantity)
+		event.RefId, event.EventType, event.EventTimestamp, event.RemainingQuantity)
 }

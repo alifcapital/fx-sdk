@@ -34,6 +34,7 @@ type SubmitOrderRequest struct {
 	LimitRate        *string                `protobuf:"bytes,9,opt,name=limit_rate,json=limitRate" json:"limit_rate,omitempty"`                         // client's rate, positive decimal string
 	OrderDay         *string                `protobuf:"bytes,10,opt,name=order_day,json=orderDay" json:"order_day,omitempty"`                           // order day 'YYYY-MM-DD'
 	MinTradeQuantity *string                `protobuf:"bytes,11,opt,name=min_trade_quantity,json=minTradeQuantity" json:"min_trade_quantity,omitempty"` // minimum trade quantity if allow_partial_fill is true, decimal string
+	PartnerId        *string                `protobuf:"bytes,12,opt,name=partner_id,json=partnerId" json:"partner_id,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
@@ -145,11 +146,17 @@ func (x *SubmitOrderRequest) GetMinTradeQuantity() string {
 	return ""
 }
 
+func (x *SubmitOrderRequest) GetPartnerId() string {
+	if x != nil && x.PartnerId != nil {
+		return *x.PartnerId
+	}
+	return ""
+}
+
 type SubmitOrderResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	OrderId       *int64                 `protobuf:"varint,1,opt,name=order_id,json=orderId" json:"order_id,omitempty"`
-	Status        *int32                 `protobuf:"varint,2,opt,name=status" json:"status,omitempty"`
-	Cause         *string                `protobuf:"bytes,3,opt,name=cause" json:"cause,omitempty"`
+	Status        *int32                 `protobuf:"varint,1,opt,name=status" json:"status,omitempty"`
+	Cause         *string                `protobuf:"bytes,2,opt,name=cause" json:"cause,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -184,13 +191,6 @@ func (*SubmitOrderResponse) Descriptor() ([]byte, []int) {
 	return file_forex_v1_order_proto_rawDescGZIP(), []int{1}
 }
 
-func (x *SubmitOrderResponse) GetOrderId() int64 {
-	if x != nil && x.OrderId != nil {
-		return *x.OrderId
-	}
-	return 0
-}
-
 func (x *SubmitOrderResponse) GetStatus() int32 {
 	if x != nil && x.Status != nil {
 		return *x.Status
@@ -210,6 +210,7 @@ type CancelOrderRequest struct {
 	ClientId      *string                `protobuf:"bytes,1,opt,name=client_id,json=clientId" json:"client_id,omitempty"`
 	OrderId       *int64                 `protobuf:"varint,2,opt,name=order_id,json=orderId" json:"order_id,omitempty"`
 	OrderDay      *string                `protobuf:"bytes,3,opt,name=order_day,json=orderDay" json:"order_day,omitempty"`
+	PartnerId     *string                `protobuf:"bytes,4,opt,name=partner_id,json=partnerId" json:"partner_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -261,6 +262,13 @@ func (x *CancelOrderRequest) GetOrderId() int64 {
 func (x *CancelOrderRequest) GetOrderDay() string {
 	if x != nil && x.OrderDay != nil {
 		return *x.OrderDay
+	}
+	return ""
+}
+
+func (x *CancelOrderRequest) GetPartnerId() string {
+	if x != nil && x.PartnerId != nil {
+		return *x.PartnerId
 	}
 	return ""
 }
@@ -344,7 +352,7 @@ func (x *CancelOrderResponse) GetCause() string {
 // required partner_id and client_id
 type FilterClientOrdersRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	OrderId       *int64                 `protobuf:"varint,1,opt,name=order_id,json=orderId" json:"order_id,omitempty"`
+	RefId         *int64                 `protobuf:"varint,1,opt,name=ref_id,json=refId" json:"ref_id,omitempty"`
 	Side          *int32                 `protobuf:"varint,2,opt,name=side" json:"side,omitempty"`
 	Status        *int32                 `protobuf:"varint,3,opt,name=status" json:"status,omitempty"`
 	Limit         *int32                 `protobuf:"varint,4,opt,name=limit" json:"limit,omitempty"` // max = 100
@@ -353,6 +361,7 @@ type FilterClientOrdersRequest struct {
 	CurrencyPair  *string                `protobuf:"bytes,7,opt,name=currency_pair,json=currencyPair" json:"currency_pair,omitempty"`
 	OrderDayFrom  *string                `protobuf:"bytes,8,opt,name=order_day_from,json=orderDayFrom" json:"order_day_from,omitempty"` // 2026-04-01
 	OrderDayTo    *string                `protobuf:"bytes,9,opt,name=order_day_to,json=orderDayTo" json:"order_day_to,omitempty"`       // 2026-04-01
+	PartnerId     *string                `protobuf:"bytes,10,opt,name=partner_id,json=partnerId" json:"partner_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -387,9 +396,9 @@ func (*FilterClientOrdersRequest) Descriptor() ([]byte, []int) {
 	return file_forex_v1_order_proto_rawDescGZIP(), []int{4}
 }
 
-func (x *FilterClientOrdersRequest) GetOrderId() int64 {
-	if x != nil && x.OrderId != nil {
-		return *x.OrderId
+func (x *FilterClientOrdersRequest) GetRefId() int64 {
+	if x != nil && x.RefId != nil {
+		return *x.RefId
 	}
 	return 0
 }
@@ -446,6 +455,13 @@ func (x *FilterClientOrdersRequest) GetOrderDayFrom() string {
 func (x *FilterClientOrdersRequest) GetOrderDayTo() string {
 	if x != nil && x.OrderDayTo != nil {
 		return *x.OrderDayTo
+	}
+	return ""
+}
+
+func (x *FilterClientOrdersRequest) GetPartnerId() string {
+	if x != nil && x.PartnerId != nil {
+		return *x.PartnerId
 	}
 	return ""
 }
@@ -641,6 +657,7 @@ type GetOrderBookDepthRequest struct {
 	MaxLevels     *int32                 `protobuf:"varint,2,opt,name=max_levels,json=maxLevels" json:"max_levels,omitempty"` // optional; default 20, max 50
 	ClientId      *string                `protobuf:"bytes,3,opt,name=client_id,json=clientId" json:"client_id,omitempty"`
 	CurrencyPair  *string                `protobuf:"bytes,4,opt,name=currency_pair,json=currencyPair" json:"currency_pair,omitempty"`
+	PartnerId     *string                `protobuf:"bytes,5,opt,name=partner_id,json=partnerId" json:"partner_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -699,6 +716,13 @@ func (x *GetOrderBookDepthRequest) GetClientId() string {
 func (x *GetOrderBookDepthRequest) GetCurrencyPair() string {
 	if x != nil && x.CurrencyPair != nil {
 		return *x.CurrencyPair
+	}
+	return ""
+}
+
+func (x *GetOrderBookDepthRequest) GetPartnerId() string {
+	if x != nil && x.PartnerId != nil {
+		return *x.PartnerId
 	}
 	return ""
 }
@@ -809,6 +833,7 @@ func (x *PriceLevel) GetTotalQuantity() string {
 
 type SubscribeOrderEventsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
+	PartnerId     *string                `protobuf:"bytes,1,opt,name=partner_id,json=partnerId" json:"partner_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -843,6 +868,13 @@ func (*SubscribeOrderEventsRequest) Descriptor() ([]byte, []int) {
 	return file_forex_v1_order_proto_rawDescGZIP(), []int{10}
 }
 
+func (x *SubscribeOrderEventsRequest) GetPartnerId() string {
+	if x != nil && x.PartnerId != nil {
+		return *x.PartnerId
+	}
+	return ""
+}
+
 type SubscribeOrderEventsResponse struct {
 	state             protoimpl.MessageState `protogen:"open.v1"`
 	RefId             *int64                 `protobuf:"varint,1,opt,name=ref_id,json=refId" json:"ref_id,omitempty"`
@@ -850,6 +882,7 @@ type SubscribeOrderEventsResponse struct {
 	EventTimestamp    *string                `protobuf:"bytes,3,opt,name=event_timestamp,json=eventTimestamp" json:"event_timestamp,omitempty"`
 	RemainingQuantity *string                `protobuf:"bytes,4,opt,name=remaining_quantity,json=remainingQuantity" json:"remaining_quantity,omitempty"`
 	OrderDay          *string                `protobuf:"bytes,5,opt,name=order_day,json=orderDay" json:"order_day,omitempty"`
+	PartnerId         *string                `protobuf:"bytes,6,opt,name=partner_id,json=partnerId" json:"partner_id,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -919,11 +952,18 @@ func (x *SubscribeOrderEventsResponse) GetOrderDay() string {
 	return ""
 }
 
+func (x *SubscribeOrderEventsResponse) GetPartnerId() string {
+	if x != nil && x.PartnerId != nil {
+		return *x.PartnerId
+	}
+	return ""
+}
+
 var File_forex_v1_order_proto protoreflect.FileDescriptor
 
 const file_forex_v1_order_proto_rawDesc = "" +
 	"\n" +
-	"\x14forex/v1/order.proto\x12\bforex.v1\"\xee\x02\n" +
+	"\x14forex/v1/order.proto\x12\bforex.v1\"\x8d\x03\n" +
 	"\x12SubmitOrderRequest\x12\x15\n" +
 	"\x06ref_id\x18\x01 \x01(\x03R\x05refId\x12\x12\n" +
 	"\x04side\x18\x02 \x01(\x05R\x04side\x12\x18\n" +
@@ -938,23 +978,26 @@ const file_forex_v1_order_proto_rawDesc = "" +
 	"limit_rate\x18\t \x01(\tR\tlimitRate\x12\x1b\n" +
 	"\torder_day\x18\n" +
 	" \x01(\tR\borderDay\x12,\n" +
-	"\x12min_trade_quantity\x18\v \x01(\tR\x10minTradeQuantity\"^\n" +
-	"\x13SubmitOrderResponse\x12\x19\n" +
-	"\border_id\x18\x01 \x01(\x03R\aorderId\x12\x16\n" +
-	"\x06status\x18\x02 \x01(\x05R\x06status\x12\x14\n" +
-	"\x05cause\x18\x03 \x01(\tR\x05cause\"i\n" +
+	"\x12min_trade_quantity\x18\v \x01(\tR\x10minTradeQuantity\x12\x1d\n" +
+	"\n" +
+	"partner_id\x18\f \x01(\tR\tpartnerId\"C\n" +
+	"\x13SubmitOrderResponse\x12\x16\n" +
+	"\x06status\x18\x01 \x01(\x05R\x06status\x12\x14\n" +
+	"\x05cause\x18\x02 \x01(\tR\x05cause\"\x88\x01\n" +
 	"\x12CancelOrderRequest\x12\x1b\n" +
 	"\tclient_id\x18\x01 \x01(\tR\bclientId\x12\x19\n" +
 	"\border_id\x18\x02 \x01(\x03R\aorderId\x12\x1b\n" +
-	"\torder_day\x18\x03 \x01(\tR\borderDay\"\xae\x01\n" +
+	"\torder_day\x18\x03 \x01(\tR\borderDay\x12\x1d\n" +
+	"\n" +
+	"partner_id\x18\x04 \x01(\tR\tpartnerId\"\xae\x01\n" +
 	"\x13CancelOrderResponse\x12\x15\n" +
 	"\x06ref_id\x18\x01 \x01(\x03R\x05refId\x12!\n" +
 	"\forder_status\x18\x02 \x01(\x05R\vorderStatus\x12\x18\n" +
 	"\asuccess\x18\x03 \x01(\bR\asuccess\x12-\n" +
 	"\x12remaining_quantity\x18\x04 \x01(\tR\x11remainingQuantity\x12\x14\n" +
-	"\x05cause\x18\x05 \x01(\tR\x05cause\"\x9a\x02\n" +
-	"\x19FilterClientOrdersRequest\x12\x19\n" +
-	"\border_id\x18\x01 \x01(\x03R\aorderId\x12\x12\n" +
+	"\x05cause\x18\x05 \x01(\tR\x05cause\"\xb5\x02\n" +
+	"\x19FilterClientOrdersRequest\x12\x15\n" +
+	"\x06ref_id\x18\x01 \x01(\x03R\x05refId\x12\x12\n" +
 	"\x04side\x18\x02 \x01(\x05R\x04side\x12\x16\n" +
 	"\x06status\x18\x03 \x01(\x05R\x06status\x12\x14\n" +
 	"\x05limit\x18\x04 \x01(\x05R\x05limit\x12\x16\n" +
@@ -963,7 +1006,10 @@ const file_forex_v1_order_proto_rawDesc = "" +
 	"\rcurrency_pair\x18\a \x01(\tR\fcurrencyPair\x12$\n" +
 	"\x0eorder_day_from\x18\b \x01(\tR\forderDayFrom\x12 \n" +
 	"\forder_day_to\x18\t \x01(\tR\n" +
-	"orderDayTo\"I\n" +
+	"orderDayTo\x12\x1d\n" +
+	"\n" +
+	"partner_id\x18\n" +
+	" \x01(\tR\tpartnerId\"I\n" +
 	"\x1aFilterClientOrdersResponse\x12+\n" +
 	"\x06orders\x18\x01 \x03(\v2\x13.forex.v1.OrderInfoR\x06orders\"\xaa\x03\n" +
 	"\tOrderInfo\x12\x19\n" +
@@ -982,28 +1028,34 @@ const file_forex_v1_order_proto_rawDesc = "" +
 	"\x12remaining_quantity\x18\v \x01(\tR\x11remainingQuantity\x12\x1d\n" +
 	"\n" +
 	"created_at\x18\f \x01(\tR\tcreatedAt\x12\x1b\n" +
-	"\torder_day\x18\r \x01(\tR\borderDay\"\x95\x01\n" +
+	"\torder_day\x18\r \x01(\tR\borderDay\"\xb4\x01\n" +
 	"\x18GetOrderBookDepthRequest\x12\x18\n" +
 	"\asegment\x18\x01 \x01(\x05R\asegment\x12\x1d\n" +
 	"\n" +
 	"max_levels\x18\x02 \x01(\x05R\tmaxLevels\x12\x1b\n" +
 	"\tclient_id\x18\x03 \x01(\tR\bclientId\x12#\n" +
-	"\rcurrency_pair\x18\x04 \x01(\tR\fcurrencyPair\"o\n" +
+	"\rcurrency_pair\x18\x04 \x01(\tR\fcurrencyPair\x12\x1d\n" +
+	"\n" +
+	"partner_id\x18\x05 \x01(\tR\tpartnerId\"o\n" +
 	"\x19GetOrderBookDepthResponse\x12(\n" +
 	"\x04bids\x18\x01 \x03(\v2\x14.forex.v1.PriceLevelR\x04bids\x12(\n" +
 	"\x04asks\x18\x02 \x03(\v2\x14.forex.v1.PriceLevelR\x04asks\"G\n" +
 	"\n" +
 	"PriceLevel\x12\x12\n" +
 	"\x04rate\x18\x01 \x01(\tR\x04rate\x12%\n" +
-	"\x0etotal_quantity\x18\x02 \x01(\tR\rtotalQuantity\"\x1d\n" +
-	"\x1bSubscribeOrderEventsRequest\"\xc9\x01\n" +
+	"\x0etotal_quantity\x18\x02 \x01(\tR\rtotalQuantity\"<\n" +
+	"\x1bSubscribeOrderEventsRequest\x12\x1d\n" +
+	"\n" +
+	"partner_id\x18\x01 \x01(\tR\tpartnerId\"\xe8\x01\n" +
 	"\x1cSubscribeOrderEventsResponse\x12\x15\n" +
 	"\x06ref_id\x18\x01 \x01(\x03R\x05refId\x12\x1d\n" +
 	"\n" +
 	"event_type\x18\x02 \x01(\x05R\teventType\x12'\n" +
 	"\x0fevent_timestamp\x18\x03 \x01(\tR\x0eeventTimestamp\x12-\n" +
 	"\x12remaining_quantity\x18\x04 \x01(\tR\x11remainingQuantity\x12\x1b\n" +
-	"\torder_day\x18\x05 \x01(\tR\borderDay2\xce\x03\n" +
+	"\torder_day\x18\x05 \x01(\tR\borderDay\x12\x1d\n" +
+	"\n" +
+	"partner_id\x18\x06 \x01(\tR\tpartnerId2\xce\x03\n" +
 	"\fOrderService\x12J\n" +
 	"\vSubmitOrder\x12\x1c.forex.v1.SubmitOrderRequest\x1a\x1d.forex.v1.SubmitOrderResponse\x12J\n" +
 	"\vCancelOrder\x12\x1c.forex.v1.CancelOrderRequest\x1a\x1d.forex.v1.CancelOrderResponse\x12\\\n" +

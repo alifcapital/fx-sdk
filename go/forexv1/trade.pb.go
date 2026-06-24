@@ -33,6 +33,7 @@ type TradeResponse struct {
 	FilledQuantity *string                `protobuf:"bytes,8,opt,name=filled_quantity,json=filledQuantity" json:"filled_quantity,omitempty"`
 	ExecutionRate  *string                `protobuf:"bytes,9,opt,name=execution_rate,json=executionRate" json:"execution_rate,omitempty"`
 	ExecutedAt     *string                `protobuf:"bytes,10,opt,name=executed_at,json=executedAt" json:"executed_at,omitempty"`
+	PartnerId      *string                `protobuf:"bytes,11,opt,name=partner_id,json=partnerId" json:"partner_id,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -137,11 +138,19 @@ func (x *TradeResponse) GetExecutedAt() string {
 	return ""
 }
 
+func (x *TradeResponse) GetPartnerId() string {
+	if x != nil && x.PartnerId != nil {
+		return *x.PartnerId
+	}
+	return ""
+}
+
 type TradeRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Side          *int32                 `protobuf:"varint,1,opt,name=side" json:"side,omitempty"`
 	TradeId       *int64                 `protobuf:"varint,2,opt,name=trade_id,json=tradeId" json:"trade_id,omitempty"`
 	TradingDay    *string                `protobuf:"bytes,3,opt,name=trading_day,json=tradingDay" json:"trading_day,omitempty"`
+	PartnerId     *string                `protobuf:"bytes,4,opt,name=partner_id,json=partnerId" json:"partner_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -197,11 +206,242 @@ func (x *TradeRequest) GetTradingDay() string {
 	return ""
 }
 
+func (x *TradeRequest) GetPartnerId() string {
+	if x != nil && x.PartnerId != nil {
+		return *x.PartnerId
+	}
+	return ""
+}
+
+type ReconciliationRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TradingDay    *string                `protobuf:"bytes,1,opt,name=trading_day,json=tradingDay" json:"trading_day,omitempty"`
+	DtFrom        *string                `protobuf:"bytes,2,opt,name=dt_from,json=dtFrom" json:"dt_from,omitempty"`
+	DtTo          *string                `protobuf:"bytes,3,opt,name=dt_to,json=dtTo" json:"dt_to,omitempty"`
+	PartnerId     *string                `protobuf:"bytes,4,opt,name=partner_id,json=partnerId" json:"partner_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReconciliationRequest) Reset() {
+	*x = ReconciliationRequest{}
+	mi := &file_forex_v1_trade_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReconciliationRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReconciliationRequest) ProtoMessage() {}
+
+func (x *ReconciliationRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_forex_v1_trade_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReconciliationRequest.ProtoReflect.Descriptor instead.
+func (*ReconciliationRequest) Descriptor() ([]byte, []int) {
+	return file_forex_v1_trade_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *ReconciliationRequest) GetTradingDay() string {
+	if x != nil && x.TradingDay != nil {
+		return *x.TradingDay
+	}
+	return ""
+}
+
+func (x *ReconciliationRequest) GetDtFrom() string {
+	if x != nil && x.DtFrom != nil {
+		return *x.DtFrom
+	}
+	return ""
+}
+
+func (x *ReconciliationRequest) GetDtTo() string {
+	if x != nil && x.DtTo != nil {
+		return *x.DtTo
+	}
+	return ""
+}
+
+func (x *ReconciliationRequest) GetPartnerId() string {
+	if x != nil && x.PartnerId != nil {
+		return *x.PartnerId
+	}
+	return ""
+}
+
+type ReconciliationResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	HashCheck     *int64                 `protobuf:"varint,1,opt,name=hash_check,json=hashCheck" json:"hash_check,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReconciliationResponse) Reset() {
+	*x = ReconciliationResponse{}
+	mi := &file_forex_v1_trade_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReconciliationResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReconciliationResponse) ProtoMessage() {}
+
+func (x *ReconciliationResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_forex_v1_trade_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReconciliationResponse.ProtoReflect.Descriptor instead.
+func (*ReconciliationResponse) Descriptor() ([]byte, []int) {
+	return file_forex_v1_trade_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *ReconciliationResponse) GetHashCheck() int64 {
+	if x != nil && x.HashCheck != nil {
+		return *x.HashCheck
+	}
+	return 0
+}
+
+type GetTradesRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TradingDay    *string                `protobuf:"bytes,1,opt,name=trading_day,json=tradingDay" json:"trading_day,omitempty"`
+	DtFrom        *string                `protobuf:"bytes,2,opt,name=dt_from,json=dtFrom" json:"dt_from,omitempty"`
+	DtTo          *string                `protobuf:"bytes,3,opt,name=dt_to,json=dtTo" json:"dt_to,omitempty"`
+	PartnerId     *string                `protobuf:"bytes,4,opt,name=partner_id,json=partnerId" json:"partner_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetTradesRequest) Reset() {
+	*x = GetTradesRequest{}
+	mi := &file_forex_v1_trade_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetTradesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetTradesRequest) ProtoMessage() {}
+
+func (x *GetTradesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_forex_v1_trade_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetTradesRequest.ProtoReflect.Descriptor instead.
+func (*GetTradesRequest) Descriptor() ([]byte, []int) {
+	return file_forex_v1_trade_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *GetTradesRequest) GetTradingDay() string {
+	if x != nil && x.TradingDay != nil {
+		return *x.TradingDay
+	}
+	return ""
+}
+
+func (x *GetTradesRequest) GetDtFrom() string {
+	if x != nil && x.DtFrom != nil {
+		return *x.DtFrom
+	}
+	return ""
+}
+
+func (x *GetTradesRequest) GetDtTo() string {
+	if x != nil && x.DtTo != nil {
+		return *x.DtTo
+	}
+	return ""
+}
+
+func (x *GetTradesRequest) GetPartnerId() string {
+	if x != nil && x.PartnerId != nil {
+		return *x.PartnerId
+	}
+	return ""
+}
+
+type GetTradesResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Trades        []*TradeResponse       `protobuf:"bytes,1,rep,name=trades" json:"trades,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetTradesResponse) Reset() {
+	*x = GetTradesResponse{}
+	mi := &file_forex_v1_trade_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetTradesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetTradesResponse) ProtoMessage() {}
+
+func (x *GetTradesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_forex_v1_trade_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetTradesResponse.ProtoReflect.Descriptor instead.
+func (*GetTradesResponse) Descriptor() ([]byte, []int) {
+	return file_forex_v1_trade_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *GetTradesResponse) GetTrades() []*TradeResponse {
+	if x != nil {
+		return x.Trades
+	}
+	return nil
+}
+
 var File_forex_v1_trade_proto protoreflect.FileDescriptor
 
 const file_forex_v1_trade_proto_rawDesc = "" +
 	"\n" +
-	"\x14forex/v1/trade.proto\x12\bforex.v1\"\xb7\x02\n" +
+	"\x14forex/v1/trade.proto\x12\bforex.v1\"\xd6\x02\n" +
 	"\rTradeResponse\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x15\n" +
 	"\x06ref_id\x18\x02 \x01(\x03R\x05refId\x12\x19\n" +
@@ -215,14 +455,39 @@ const file_forex_v1_trade_proto_rawDesc = "" +
 	"\x0eexecution_rate\x18\t \x01(\tR\rexecutionRate\x12\x1f\n" +
 	"\vexecuted_at\x18\n" +
 	" \x01(\tR\n" +
-	"executedAt\"^\n" +
+	"executedAt\x12\x1d\n" +
+	"\n" +
+	"partner_id\x18\v \x01(\tR\tpartnerId\"}\n" +
 	"\fTradeRequest\x12\x12\n" +
 	"\x04side\x18\x01 \x01(\x05R\x04side\x12\x19\n" +
 	"\btrade_id\x18\x02 \x01(\x03R\atradeId\x12\x1f\n" +
 	"\vtrading_day\x18\x03 \x01(\tR\n" +
-	"tradingDay2L\n" +
+	"tradingDay\x12\x1d\n" +
+	"\n" +
+	"partner_id\x18\x04 \x01(\tR\tpartnerId\"\x85\x01\n" +
+	"\x15ReconciliationRequest\x12\x1f\n" +
+	"\vtrading_day\x18\x01 \x01(\tR\n" +
+	"tradingDay\x12\x17\n" +
+	"\adt_from\x18\x02 \x01(\tR\x06dtFrom\x12\x13\n" +
+	"\x05dt_to\x18\x03 \x01(\tR\x04dtTo\x12\x1d\n" +
+	"\n" +
+	"partner_id\x18\x04 \x01(\tR\tpartnerId\"7\n" +
+	"\x16ReconciliationResponse\x12\x1d\n" +
+	"\n" +
+	"hash_check\x18\x01 \x01(\x03R\thashCheck\"\x80\x01\n" +
+	"\x10GetTradesRequest\x12\x1f\n" +
+	"\vtrading_day\x18\x01 \x01(\tR\n" +
+	"tradingDay\x12\x17\n" +
+	"\adt_from\x18\x02 \x01(\tR\x06dtFrom\x12\x13\n" +
+	"\x05dt_to\x18\x03 \x01(\tR\x04dtTo\x12\x1d\n" +
+	"\n" +
+	"partner_id\x18\x04 \x01(\tR\tpartnerId\"D\n" +
+	"\x11GetTradesResponse\x12/\n" +
+	"\x06trades\x18\x01 \x03(\v2\x17.forex.v1.TradeResponseR\x06trades2\xe7\x01\n" +
 	"\fTradeService\x12<\n" +
-	"\x05Trade\x12\x16.forex.v1.TradeRequest\x1a\x17.forex.v1.TradeResponse(\x010\x01B\x8d\x01\n" +
+	"\x05Trade\x12\x16.forex.v1.TradeRequest\x1a\x17.forex.v1.TradeResponse(\x010\x01\x12S\n" +
+	"\x0eReconciliation\x12\x1f.forex.v1.ReconciliationRequest\x1a .forex.v1.ReconciliationResponse\x12D\n" +
+	"\tGetTrades\x12\x1a.forex.v1.GetTradesRequest\x1a\x1b.forex.v1.GetTradesResponseB\x8d\x01\n" +
 	"\fcom.forex.v1B\n" +
 	"TradeProtoP\x01Z0github.com/alifcapital/fx/proto/forex/v1;forexv1\xa2\x02\x03FXX\xaa\x02\bForex.V1\xca\x02\bForex\\V1\xe2\x02\x14Forex\\V1\\GPBMetadata\xea\x02\tForex::V1b\beditionsp\xe8\a"
 
@@ -238,19 +503,28 @@ func file_forex_v1_trade_proto_rawDescGZIP() []byte {
 	return file_forex_v1_trade_proto_rawDescData
 }
 
-var file_forex_v1_trade_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
+var file_forex_v1_trade_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
 var file_forex_v1_trade_proto_goTypes = []any{
-	(*TradeResponse)(nil), // 0: forex.v1.TradeResponse
-	(*TradeRequest)(nil),  // 1: forex.v1.TradeRequest
+	(*TradeResponse)(nil),          // 0: forex.v1.TradeResponse
+	(*TradeRequest)(nil),           // 1: forex.v1.TradeRequest
+	(*ReconciliationRequest)(nil),  // 2: forex.v1.ReconciliationRequest
+	(*ReconciliationResponse)(nil), // 3: forex.v1.ReconciliationResponse
+	(*GetTradesRequest)(nil),       // 4: forex.v1.GetTradesRequest
+	(*GetTradesResponse)(nil),      // 5: forex.v1.GetTradesResponse
 }
 var file_forex_v1_trade_proto_depIdxs = []int32{
-	1, // 0: forex.v1.TradeService.Trade:input_type -> forex.v1.TradeRequest
-	0, // 1: forex.v1.TradeService.Trade:output_type -> forex.v1.TradeResponse
-	1, // [1:2] is the sub-list for method output_type
-	0, // [0:1] is the sub-list for method input_type
-	0, // [0:0] is the sub-list for extension type_name
-	0, // [0:0] is the sub-list for extension extendee
-	0, // [0:0] is the sub-list for field type_name
+	0, // 0: forex.v1.GetTradesResponse.trades:type_name -> forex.v1.TradeResponse
+	1, // 1: forex.v1.TradeService.Trade:input_type -> forex.v1.TradeRequest
+	2, // 2: forex.v1.TradeService.Reconciliation:input_type -> forex.v1.ReconciliationRequest
+	4, // 3: forex.v1.TradeService.GetTrades:input_type -> forex.v1.GetTradesRequest
+	0, // 4: forex.v1.TradeService.Trade:output_type -> forex.v1.TradeResponse
+	3, // 5: forex.v1.TradeService.Reconciliation:output_type -> forex.v1.ReconciliationResponse
+	5, // 6: forex.v1.TradeService.GetTrades:output_type -> forex.v1.GetTradesResponse
+	4, // [4:7] is the sub-list for method output_type
+	1, // [1:4] is the sub-list for method input_type
+	1, // [1:1] is the sub-list for extension type_name
+	1, // [1:1] is the sub-list for extension extendee
+	0, // [0:1] is the sub-list for field type_name
 }
 
 func init() { file_forex_v1_trade_proto_init() }
@@ -264,7 +538,7 @@ func file_forex_v1_trade_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_forex_v1_trade_proto_rawDesc), len(file_forex_v1_trade_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   2,
+			NumMessages:   6,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
