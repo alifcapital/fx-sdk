@@ -12,6 +12,7 @@ CREATE TABLE client_orders (
     min_trade_quantity      NUMERIC(28,6),
     allow_partial_fill      BOOLEAN NOT NULL,
     currency_pair           TEXT NOT NULL,
+    partner_id              TEXT NOT NULL,
     client_id               TEXT NOT NULL,           -- client's id
     client_inn              TEXT NOT NULL,           -- client's INN (tax identifier)
     cause                   TEXT,
@@ -32,12 +33,17 @@ CREATE TABLE client_trades (
     trade_id              BIGINT NOT NULL, -- core trade id
     order_id              BIGINT NOT NULL, -- core order id
     ref_id                BIGINT NOT NULL, -- client_orders ref_id
+    side                  SMALLINT NOT NULL,
+    settle_attempts       SMALLINT NOT NULL DEFAULT 0,      -- number of settlement handler attempts
     filled_quantity       NUMERIC(28,6) NOT NULL,
     execution_rate        NUMERIC(28,6) NOT NULL,
     settlement            NUMERIC(28,6),
     fee                   NUMERIC(28,6),
+    partner_id            TEXT NOT NULL,
     client_id             TEXT NOT NULL,
-    ack                   BOOLEAN NOT NULL DEFAULT FALSE,
+    ack                   BOOLEAN NOT NULL DEFAULT FALSE,   -- trade was acked to the Core (received & stored)
+    settled               BOOLEAN NOT NULL DEFAULT FALSE,   -- partner-side settlement (debit/credit) succeeded
+    settle_error          TEXT,                             -- last settlement error, NULL once settled
     PRIMARY KEY (trade_id, order_id, trading_day)
 ) WITH (
     tsdb.hypertable,
@@ -45,6 +51,9 @@ CREATE TABLE client_trades (
     tsdb.segmentby        = 'client_id',
     tsdb.orderby          = 'trading_day DESC'
 );
+
+-- Backstop lookup for RetryUnsettled: trades stored but not yet settled.
+CREATE INDEX client_trades_unsettled ON client_trades (trading_day) WHERE NOT settled;
 
 -- Retention Policy is a set of rules that determines
 -- how long data should be kept and when it should be automatically deleted
@@ -67,9 +76,14 @@ CREATE TABLE reconciliations (
     tsdb.orderby          = 'dt DESC'
 );
 -- after test maybe not needed count and sum ?
+-- Only settled trades contribute to the hash. A trade that was received and
+-- stored but whose partner-side settlement has not completed (settled = FALSE)
+-- is deliberately excluded, so it shows up as a divergence against the Core
+-- instead of being silently rubber-stamped as reconciled.
 SELECT
     bit_xor(hashint8(trade_id) # hashint8(order_id)) as hash_check
 FROM client_trades
 WHERE trading_day = '2026-04-30'
+  AND settled = TRUE
   AND executed_at >= '2026-04-30 10:00:00'
   AND executed_at <  '2026-04-30 11:00:00';

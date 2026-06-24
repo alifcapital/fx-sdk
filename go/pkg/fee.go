@@ -11,5 +11,5 @@ func Percentage(amount decimal.Decimal, percentage decimal.Decimal) (decimal.Dec
 	if err != nil {
 		return decimal.Zero, err
 	}
-	return amount, nil
+	return amount.Round(6), nil
 }
