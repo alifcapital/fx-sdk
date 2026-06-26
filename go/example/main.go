@@ -14,6 +14,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"flag"
 	"log"
 	"os"
@@ -22,6 +23,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/sync/errgroup"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 
 	v1 "github.com/alifcapital/fx-sdk/go/v1"
@@ -63,9 +65,16 @@ func main() {
 		v1.WithMaxRetries(3),
 		v1.WithRetryBackoff(100*time.Millisecond, 5*time.Second),
 	}
+	
 	if *insecureC {
 		opts = append(opts, v1.WithDialOptions(
 			grpc.WithTransportCredentials(insecure.NewCredentials()),
+		))
+	} else {
+		opts = append(opts, v1.WithDialOptions(
+			grpc.WithTransportCredentials(
+				credentials.NewTLS(&tls.Config{}),
+			),
 		))
 	}
 
@@ -118,7 +127,7 @@ func main() {
 			}
 		}
 	})
-
+	segment := v1.Retail
 	var acc = make(map[string]string)
 	// account details
 	acc["debit_account"] = "1271"
@@ -130,7 +139,7 @@ func main() {
 	// 1. Submit a small USD/TJS buy order at limit 9.60.
 	submitted, err := client.SubmitOrder(ctx, &v1.SubmitOrderParams{
 		Side:             v1.Buy,
-		Segment:          v1.Retail,
+		Segment:          segment,
 		AllowPartialFill: true,
 		PartnerId:        *partnerId,
 		ClientId:         *clientId,
@@ -172,7 +181,7 @@ func main() {
 
 	// 3. Get order book depth.
 	depth, err := client.GetOrderBookDepth(ctx, &v1.GetOrderBookDepthParams{
-		Segment:      v1.Retail,
+		Segment:      segment,
 		MaxLevels:    10,
 		ClientId:     *clientId,
 		CurrencyPair: "USD/TJS",
