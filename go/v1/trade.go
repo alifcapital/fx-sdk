@@ -20,11 +20,10 @@ import (
 //  4. Invoke the caller-supplied handler so the partner can run its own
 //     account movements (debit/credit) using the enriched event.
 //
-// The call blocks until ctx is cancelled, the stream returns a non-retryable
-// error, or maxRetries consecutive reconnect attempts fail. Transient gRPC
-// errors and clean server-side EOFs trigger a backoff-and-reconnect; every
-// successful Recv resets the counter, so a healthy stream can survive an
-// arbitrary number of blips over its lifetime.
+// The call blocks until ctx is cancelled or the stream returns a non-retryable
+// error. A subscription is long-lived, so transient gRPC errors and clean
+// server-side EOFs trigger a backoff-and-reconnect indefinitely (maxRetries
+// bounds per-call unary retries, not the lifetime of a stream).
 func (c *Client) SubscribeTrades(ctx context.Context, handler TradeEventHandler) error {
 	attempt := 0
 	for {
@@ -34,9 +33,6 @@ func (c *Client) SubscribeTrades(ctx context.Context, handler TradeEventHandler)
 		}
 		if !isStreamRetryable(err) {
 			return fmt.Errorf("fx-sdk: subscribe trades: %w", err)
-		}
-		if attempt >= c.maxRetries {
-			return fmt.Errorf("fx-sdk: subscribe trades after %d reconnects: %w", attempt, err)
 		}
 		delay := backoff(attempt, c.baseDelay, c.maxDelay)
 		attempt++
@@ -52,8 +48,9 @@ func (c *Client) SubscribeTrades(ctx context.Context, handler TradeEventHandler)
 }
 
 // runTradeStream opens one bidirectional TradeService stream and processes
-// trades until a Recv or Send error. It resets *attempt on every successful
-// Recv so transient blips do not burn the reconnect budget.
+// trades until a Recv or Send error. It resets *attempt once the server accepts
+// the stream, so a connection that re-establishes successfully starts its next
+// backoff from the base delay.
 //
 // The flow separates three states that used to be conflated into one ack:
 //
@@ -71,12 +68,18 @@ func (c *Client) runTradeStream(ctx context.Context, handler TradeEventHandler, 
 	if err != nil {
 		return err
 	}
+	// Trade opens the stream lazily; Header() blocks until the server actually
+	// accepts it. Reset the reconnect counter only once the connection is
+	// established, so backoff keeps growing if the open fails.
+	if _, err := stream.Header(); err != nil {
+		return err
+	}
+	*attempt = 0
 	for {
 		resp, err := stream.Recv()
 		if err != nil {
 			return err
 		}
-		*attempt = 0
 
 		event, settled, perr := c.persistTrade(ctx, resp)
 		if perr != nil {

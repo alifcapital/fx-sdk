@@ -252,10 +252,9 @@ func (c *Client) FilterClientOrders(ctx context.Context, p *FilterClientOrdersPa
 //
 // The stream is reopened on transient gRPC errors (Unavailable,
 // ResourceExhausted) and clean server-side EOFs, backing off between attempts.
-// The consecutive-failure counter resets on every successful Recv, so a
-// subscription that is making progress survives arbitrarily many reconnects.
-// The method returns only when ctx is cancelled, the error is not retryable,
-// or maxRetries consecutive reconnect attempts have failed.
+// Unlike unary calls, a subscription is long-lived and reconnects indefinitely:
+// the method returns only when ctx is cancelled or the error is not retryable.
+// (maxRetries bounds per-call unary retries, not the lifetime of a stream.)
 func (c *Client) SubscribeOrderEvents(ctx context.Context, partnerId string, handler OrderEventHandler) error {
 	attempt := 0
 	for {
@@ -265,9 +264,6 @@ func (c *Client) SubscribeOrderEvents(ctx context.Context, partnerId string, han
 		}
 		if !isStreamRetryable(err) {
 			return fmt.Errorf("fx-sdk: subscribe order events: %w", err)
-		}
-		if attempt >= c.maxRetries {
-			return fmt.Errorf("fx-sdk: subscribe order events after %d reconnects: %w", attempt, err)
 		}
 		delay := backoff(attempt, c.baseDelay, c.maxDelay)
 		attempt++
@@ -283,9 +279,9 @@ func (c *Client) SubscribeOrderEvents(ctx context.Context, partnerId string, han
 }
 
 // runOrderEventStream opens a single SubscribeOrderEvents stream and pumps
-// events until the stream returns an error. On every successful Recv the
-// caller's attempt counter is reset so transient flaps do not accumulate
-// toward the reconnect cap.
+// events until the stream returns an error. Once the server accepts the stream
+// the caller's attempt counter is reset, so a connection that re-establishes
+// successfully starts its next backoff from the base delay.
 func (c *Client) runOrderEventStream(ctx context.Context, partnerId string, handler OrderEventHandler, attempt *int) error {
 	stream, err := c.order.SubscribeOrderEvents(ctx, &forexv1.SubscribeOrderEventsRequest{
 		PartnerId: &partnerId,
@@ -293,12 +289,18 @@ func (c *Client) runOrderEventStream(ctx context.Context, partnerId string, hand
 	if err != nil {
 		return err
 	}
+	// SubscribeOrderEvents opens the stream lazily; Header() blocks until the
+	// server actually accepts it. Reset the reconnect counter only once the
+	// connection is established, so backoff keeps growing if the open fails.
+	if _, err := stream.Header(); err != nil {
+		return err
+	}
+	*attempt = 0
 	for {
 		resp, err := stream.Recv()
 		if err != nil {
 			return err
 		}
-		*attempt = 0
 
 		event := &OrderEvent{
 			RefId:             resp.GetRefId(),

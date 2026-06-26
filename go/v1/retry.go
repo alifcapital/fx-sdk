@@ -22,12 +22,13 @@ func retryUnaryInterceptor(maxRetries int, baseDelay, maxDelay time.Duration) gr
 		opts ...grpc.CallOption,
 	) error {
 		var err error
-		for attempt := range maxRetries + 1 {
+		limit := max(maxRetries, 0)
+		for attempt := range limit + 1 {
 			err = invoker(ctx, method, req, reply, cc, opts...)
 			if err == nil {
 				return nil
 			}
-			if !isRetryable(err) || attempt == maxRetries {
+			if !isRetryable(err) || attempt == limit {
 				return err
 			}
 			delay := backoff(attempt, baseDelay, maxDelay)
@@ -67,8 +68,14 @@ func isStreamRetryable(err error) bool {
 	return isRetryable(err)
 }
 
+// backoff returns a randomized exponential backoff delay for the given attempt,
+// capped at max. It doubles iteratively and stops at max, so it never overflows
+// regardless of how large attempt grows (stream reconnects are unbounded).
 func backoff(attempt int, base, max time.Duration) time.Duration {
-	delay := base << attempt
+	delay := base
+	for i := 0; i < attempt && delay < max; i++ {
+		delay <<= 1
+	}
 	delay = min(delay, max)
 	half := delay / 2
 	if half <= 0 {
