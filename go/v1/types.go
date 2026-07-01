@@ -176,6 +176,16 @@ type GetOrderBookDepthResult struct {
 	Asks []PriceLevel
 }
 
+// CurrencyPair describes a tradable currency pair and its trading specifications.
+type CurrencyPair struct {
+	Pair             string // e.g. "USD/TJS"
+	MinLot           string // minimum lot size (decimal string)
+	MinTradeQuantity string // minimum tradable quantity (decimal string)
+	ValidRatePercent int32  // % band around the rate considered valid
+	NbtAvgRate       string // NBT average rate (decimal string)
+	IsActive         bool
+}
+
 // TradeEvent represents a single trade execution received from the Core, enriched
 // with data from the parent order (client, side, currency pair, account, fee
 // config) and with the settlement/fee values already computed and persisted.

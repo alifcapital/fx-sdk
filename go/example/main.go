@@ -127,6 +127,19 @@ func main() {
 			}
 		}
 	})
+	// 0d. Fetch the available currency pairs and their trading specs. The
+	// partner is identified by metadata, so no parameters are required.
+	pairs, err := client.GetCurrencyPairs(ctx)
+	if err != nil {
+		log.Printf("get currency pairs error: %v", err)
+	} else {
+		log.Printf("available currency pairs (%d):", len(pairs))
+		for _, p := range pairs {
+			log.Printf("  %s active=%v min_lot=%s min_trade_qty=%s valid_rate_percent=%d nbt_avg_rate=%s",
+				p.Pair, p.IsActive, p.MinLot, p.MinTradeQuantity, p.ValidRatePercent, p.NbtAvgRate)
+		}
+	}
+
 	segment := v1.Retail
 	var acc = make(map[string]string)
 	// account details
