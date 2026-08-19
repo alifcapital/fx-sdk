@@ -27,6 +27,45 @@ func (c *Client) SubmitOrder(ctx context.Context, p *SubmitOrderParams) (*Submit
 	if p.Segment < Retail || p.Segment > Treasury {
 		return nil, fmt.Errorf("fx-sdk: SubmitOrder: segment is required")
 	}
+
+	// order_type defaults to limit when the caller leaves it unset, matching the
+	// Core's own default for an absent field.
+	orderType := p.OrderType
+	if orderType == 0 {
+		orderType = LimitOrder
+	}
+	if orderType != LimitOrder && orderType != MarketOrder {
+		return nil, ErrInvalidOrderType
+	}
+
+	// A market order is priced by the book, so limit_rate carries no meaning and
+	// is dropped rather than stored as a rate the order never honoured. A limit
+	// order without a rate has nothing to execute against.
+	limitRate := &p.LimitRate
+	if orderType == MarketOrder {
+		limitRate = nil
+	} else if p.LimitRate == "" {
+		return nil, ErrLimitRateRequired
+	}
+
+	// counterparty_segment is a restriction, not a segment: only "any" and
+	// "treasury only" exist on the wire, and the latter is reserved for treasury
+	// orders.
+	switch p.CounterpartySegment {
+	case AnyCounterparty, Treasury:
+	default:
+		return nil, ErrInvalidCounterpartySegment
+	}
+	if p.CounterpartySegment == Treasury && p.Segment != Treasury {
+		return nil, ErrTreasuryCounterpartyOnly
+	}
+
+	// min_trade_quantity is optional; an empty string is not a decimal, so it
+	// goes to the DB as NULL.
+	var minTradeQuantity *string
+	if p.MinTradeQuantity != "" {
+		minTradeQuantity = &p.MinTradeQuantity
+	}
 	// 0. Check for duplicates in the last 2 minutes.
 	// Scoped to today's partition so the hypertable only scans a single chunk.
 	// it is like rate limiter
@@ -39,9 +78,10 @@ func (c *Client) SubmitOrder(ctx context.Context, p *SubmitOrderParams) (*Submit
 			  AND partner_id = $3
 			  AND client_id = $4
 			  AND side = $1
-			  AND limit_rate = $2
+			  AND limit_rate IS NOT DISTINCT FROM $2
 			  AND quantity = $5
-			  AND currency_pair = $6);`, p.Side, p.LimitRate, p.PartnerId, p.ClientId, p.Quantity, p.CurrencyPair).Scan(&exists)
+			  AND currency_pair = $6
+			  AND order_type = $7);`, p.Side, limitRate, p.PartnerId, p.ClientId, p.Quantity, p.CurrencyPair, orderType).Scan(&exists)
 	if err != nil {
 		return nil, fmt.Errorf("fx-sdk: check duplicate: %w", err)
 	}
@@ -59,15 +99,16 @@ func (c *Client) SubmitOrder(ctx context.Context, p *SubmitOrderParams) (*Submit
 	err = c.db.QueryRow(ctx,
 		`INSERT INTO client_orders (side, segment, quantity, limit_rate, remaining_quantity,
 		                            min_trade_quantity, allow_partial_fill, currency_pair, partner_id,
-		                            client_id, client_inn, account, fee)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+		                            client_id, client_inn, account, fee, order_type, counterparty_segment)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
 		 RETURNING ref_id, to_char(order_day, 'YYYY-MM-DD');`,
 		p.Side, p.Segment,
-		p.Quantity, p.LimitRate, p.Quantity, // remaining_quantity starts equal to quantity
-		p.MinTradeQuantity,
+		p.Quantity, limitRate, p.Quantity, // remaining_quantity starts equal to quantity
+		minTradeQuantity,
 		p.AllowPartialFill,
 		p.CurrencyPair, p.PartnerId, p.ClientId, p.ClientINN,
 		p.Account, p.Fee,
+		orderType, p.CounterpartySegment,
 	).Scan(&refId, &orderDay)
 	if err != nil {
 		return nil, fmt.Errorf("fx-sdk: insert order: %w", err)
@@ -76,18 +117,20 @@ func (c *Client) SubmitOrder(ctx context.Context, p *SubmitOrderParams) (*Submit
 	// 2. Build and send the gRPC request. ref_id is the local BIGSERIAL,
 	// carried over the wire as int64.
 	req := &forexv1.SubmitOrderRequest{
-		Side:             new(int32(p.Side)),
-		Segment:          new(int32(p.Segment)),
-		AllowPartialFill: new(p.AllowPartialFill),
-		ClientId:         &p.ClientId,
-		ClientInn:        &p.ClientINN,
-		CurrencyPair:     &p.CurrencyPair,
-		Quantity:         &p.Quantity,
-		LimitRate:        &p.LimitRate,
-		RefId:            &refId,
-		OrderDay:         &orderDay,
-		MinTradeQuantity: &p.MinTradeQuantity,
-		PartnerId:        &p.PartnerId,
+		Side:                new(int32(p.Side)),
+		Segment:             new(int32(p.Segment)),
+		AllowPartialFill:    new(p.AllowPartialFill),
+		ClientId:            &p.ClientId,
+		ClientInn:           &p.ClientINN,
+		CurrencyPair:        &p.CurrencyPair,
+		Quantity:            &p.Quantity,
+		LimitRate:           limitRate,
+		RefId:               &refId,
+		OrderDay:            &orderDay,
+		MinTradeQuantity:    minTradeQuantity,
+		PartnerId:           &p.PartnerId,
+		OrderType:           new(int32(orderType)),
+		CounterpartySegment: new(int32(p.CounterpartySegment)),
 	}
 
 	resp, err := c.order.SubmitOrder(ctx, req)
@@ -98,13 +141,22 @@ func (c *Client) SubmitOrder(ctx context.Context, p *SubmitOrderParams) (*Submit
 	// 3. Reflect the Core's response into the local row.
 	orderStatus := OrderStatus(resp.GetStatus())
 
+	// A market order is filled (or cancelled) synchronously, so the response
+	// already carries the executed quantity and the weighted average rate. The
+	// individual trades still arrive on the trade stream, which owns the
+	// remaining_quantity decrement — only the status is written here, so the two
+	// paths never double-count the same fill.
+	result := &SubmitOrderResult{
+		RefId:          refId,
+		OrderDay:       orderDay,
+		Status:         orderStatus,
+		FilledQuantity: resp.GetFilledQuantity(),
+		AverageRate:    resp.GetAverageRate(),
+	}
+
 	switch orderStatus {
 	case Pending, Duplicate, Unknown:
-		return &SubmitOrderResult{
-			RefId:    refId,
-			OrderDay: orderDay,
-			Status:   orderStatus,
-		}, nil
+		return result, nil
 	default:
 	}
 
@@ -118,12 +170,8 @@ func (c *Client) SubmitOrder(ctx context.Context, p *SubmitOrderParams) (*Submit
 		log.Println("fx-sdk: submit order: expected 1 row affected, got: ", cmd.RowsAffected())
 	}
 
-	return &SubmitOrderResult{
-		RefId:    refId,
-		OrderDay: orderDay,
-		Status:   orderStatus,
-		Cause:    resp.GetCause(),
-	}, nil
+	result.Cause = resp.GetCause()
+	return result, nil
 }
 
 // CancelOrder sends a cancellation request to the Core for an existing order.
@@ -242,6 +290,9 @@ func (c *Client) FilterClientOrders(ctx context.Context, p *FilterClientOrdersPa
 			RemainingQuantity: o.GetRemainingQuantity(),
 			CreatedAt:         o.GetCreatedAt(),
 			OrderDay:          o.GetOrderDay(),
+
+			OrderType:           OrderType(o.GetOrderType()),
+			CounterpartySegment: Segment(o.GetCounterpartySegment()),
 		})
 	}
 	return out, nil

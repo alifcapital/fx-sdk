@@ -33,6 +33,16 @@ var (
 	ErrClientIDRequired = errors.New("fx-sdk: client_id is required")
 	// ErrPartnerIDRequired is returned when partner_id is not provided.
 	ErrPartnerIDRequired = errors.New("fx-sdk: partner_id is required")
+	// ErrLimitRateRequired is returned when a limit order carries no limit rate.
+	ErrLimitRateRequired = errors.New("fx-sdk: limit_rate is required for a limit order")
+	// ErrInvalidOrderType is returned when order_type is neither limit nor market.
+	ErrInvalidOrderType = errors.New("fx-sdk: order_type must be LimitOrder or MarketOrder")
+	// ErrInvalidCounterpartySegment is returned when counterparty_segment is set
+	// to anything other than AnyCounterparty or Treasury.
+	ErrInvalidCounterpartySegment = errors.New("fx-sdk: counterparty_segment must be AnyCounterparty or Treasury")
+	// ErrTreasuryCounterpartyOnly is returned when a non-treasury order asks to
+	// trade against treasury counterparties only.
+	ErrTreasuryCounterpartyOnly = errors.New("fx-sdk: only a Treasury order may set CounterpartySegment = Treasury")
 )
 
 // Side represents the order direction.
@@ -47,9 +57,32 @@ const (
 type Segment int32
 
 const (
-	Retail    Segment = 1
-	Corporate Segment = 2
-	Treasury  Segment = 3
+	// AnyCounterparty is the zero Segment. It is not a valid order segment; it
+	// is the default for SubmitOrderParams.CounterpartySegment and means the
+	// order may match a counterparty in any segment.
+	AnyCounterparty Segment = 0
+	Retail          Segment = 1
+	Corporate       Segment = 2
+	Treasury        Segment = 3
+)
+
+// OrderType selects how the order is priced and what happens to the part of it
+// that cannot be filled immediately.
+type OrderType int32
+
+const (
+	// LimitOrder executes at LimitRate or better. Whatever is not filled
+	// immediately rests in the order book until it fills, expires or is
+	// cancelled. This is the default when OrderType is left unset.
+	LimitOrder OrderType = 1
+	// MarketOrder executes against the best available prices in the book and
+	// ignores LimitRate. Its unfilled remainder is cancelled instead of resting
+	// in the book, so a market order never leaves a live order behind.
+	//
+	// Because the partner cannot know the price in advance, the fill of a market
+	// order is reported synchronously in SubmitOrderResult.FilledQuantity and
+	// AverageRate, in addition to arriving on the trade stream.
+	MarketOrder OrderType = 2
 )
 
 // SubmitOrderParams contains the parameters for submitting a new order.
@@ -63,10 +96,16 @@ type SubmitOrderParams struct {
 	ClientINN        string
 	CurrencyPair     string
 	Quantity         string // decimal string, e.g. "1000.00"
-	LimitRate        string // decimal string, e.g. "10.8500"
+	LimitRate        string // decimal string, e.g. "10.8500"; required for LimitOrder, ignored for MarketOrder
 	MinTradeQuantity string // optional; relevant when AllowPartialFill is true
 	Account          any    // optional JSONB
 	Fee              any    // optional JSONB
+	// OrderType selects limit or market execution. Zero means LimitOrder.
+	OrderType OrderType
+	// CounterpartySegment restricts which counterparties the order may match.
+	// Zero (AnyCounterparty) places no restriction; only a Treasury order may
+	// set Treasury to trade against treasury counterparties exclusively.
+	CounterpartySegment Segment
 }
 
 // SubmitOrderResult contains the result of a submitted order.
@@ -75,6 +114,16 @@ type SubmitOrderResult struct {
 	OrderDay string      // YYYY-MM-DD; value of the local client_orders.order_day column
 	Status   OrderStatus // status returned by the Core
 	Cause    string      // reason if the order was rejected/failed
+	// FilledQuantity and AverageRate report the synchronous execution of a
+	// MarketOrder: the base-currency quantity actually executed and the
+	// quantity-weighted average rate across the trades of this submission.
+	// Both are empty for a LimitOrder, whose fills arrive on the trade stream.
+	//
+	// The individual trades behind these totals also arrive on the trade
+	// stream, which stays the authoritative source for settlement — these
+	// fields exist so the caller learns the market price without waiting.
+	FilledQuantity string
+	AverageRate    string
 }
 
 // CancelOrderParams contains the parameters for cancelling an existing order.
@@ -125,6 +174,10 @@ type Order struct {
 	RemainingQuantity string
 	CreatedAt         string
 	OrderDay          string
+	OrderType         OrderType // LimitOrder or MarketOrder
+	// CounterpartySegment is AnyCounterparty when the order may match any
+	// segment, or Treasury when it is restricted to treasury counterparties.
+	CounterpartySegment Segment
 }
 
 // OrderEvent represents an event received from the Core via SubscribeOrderEvents.
@@ -182,7 +235,7 @@ type CurrencyPair struct {
 	MinLot           string // minimum lot size (decimal string)
 	MinTradeQuantity string // minimum tradable quantity (decimal string)
 	ValidRatePercent int32  // % band around the rate considered valid
-	NbtAvgRate       string // NBT average rate (decimal string)
+	NbtRate          string // NBT rate (decimal string)
 	IsActive         bool
 }
 

@@ -6,8 +6,10 @@ CREATE TABLE client_orders (
     side                    SMALLINT NOT NULL,
     segment                 SMALLINT NOT NULL,
     status                  SMALLINT NOT NULL DEFAULT 1,
+    order_type              SMALLINT NOT NULL DEFAULT 1,  -- 1 = limit, 2 = market
+    counterparty_segment    SMALLINT NOT NULL DEFAULT 0,  -- 0 = any counterparty, 3 = treasury only
     quantity                NUMERIC(28,6) NOT NULL,
-    limit_rate              NUMERIC(28,6) NOT NULL,
+    limit_rate              NUMERIC(28,6),                -- NULL for market orders (priced by the book)
     remaining_quantity      NUMERIC(28,6) NOT NULL,
     min_trade_quantity      NUMERIC(28,6),
     allow_partial_fill      BOOLEAN NOT NULL,
@@ -25,6 +27,12 @@ CREATE TABLE client_orders (
     tsdb.segmentby        = 'client_id',
     tsdb.orderby          = 'order_day DESC'
 );
+
+-- Migration for databases created before market orders and counterparty
+-- restrictions existed. Safe to re-run.
+-- ALTER TABLE client_orders ADD COLUMN IF NOT EXISTS order_type SMALLINT NOT NULL DEFAULT 1;
+-- ALTER TABLE client_orders ADD COLUMN IF NOT EXISTS counterparty_segment SMALLINT NOT NULL DEFAULT 0;
+-- ALTER TABLE client_orders ALTER COLUMN limit_rate DROP NOT NULL;
 
 CREATE TABLE client_trades (
     executed_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),

@@ -9,7 +9,8 @@
 //	    -api-key=YOUR_API_KEY \
 //	    -dsn="postgres://user:pass@localhost:5432/fx?sslmode=disable" \
 //	    -client-id=CLIENT_42 \
-//	    -client-inn=123456789
+//	    -client-inn=123456789 \
+//	    -market
 package main
 
 import (
@@ -41,6 +42,7 @@ func main() {
 		clientINN = flag.String("client-inn", "07128321", "client INN (taxpayer ID)")
 		insecureC = flag.Bool("insecure", true, "use plaintext gRPC (dev only)")
 		cancel    = flag.Bool("cancel", false, "cancel the order after submission")
+		market    = flag.Bool("market", false, "also submit a market order (priced by the book)")
 	)
 	flag.Parse()
 
@@ -135,8 +137,8 @@ func main() {
 	} else {
 		log.Printf("available currency pairs (%d):", len(pairs))
 		for _, p := range pairs {
-			log.Printf("  %s active=%v min_lot=%s min_trade_qty=%s valid_rate_percent=%d nbt_avg_rate=%s",
-				p.Pair, p.IsActive, p.MinLot, p.MinTradeQuantity, p.ValidRatePercent, p.NbtAvgRate)
+			log.Printf("  %s active=%v min_lot=%s min_trade_qty=%s valid_rate_percent=%d nbt_rate=%s",
+				p.Pair, p.IsActive, p.MinLot, p.MinTradeQuantity, p.ValidRatePercent, p.NbtRate)
 		}
 	}
 
@@ -149,7 +151,8 @@ func main() {
 	// fixed fee in percentage
 	fee["fixed"] = "0.05"
 
-	// 1. Submit a small USD/TJS buy order at limit 9.60.
+	// 1. Submit a small USD/TJS buy limit order at 9.31. OrderType is left unset,
+	// which the SDK treats as v1.LimitOrder.
 	submitted, err := client.SubmitOrder(ctx, &v1.SubmitOrderParams{
 		Side:             v1.Buy,
 		Segment:          segment,
@@ -174,6 +177,36 @@ func main() {
 			submitted.RefId, submitted.OrderDay, submitted.Status, submitted.Cause)
 	}
 
+	// 1b. Submit a market order. It carries no LimitRate — the book prices it,
+	// and whatever cannot be filled right away is cancelled rather than left
+	// resting. Because the price is not known in advance, the response reports
+	// the executed quantity and the weighted average rate synchronously; the
+	// individual trades still arrive on the trade subscription.
+	if *market {
+		mkt, err := client.SubmitOrder(ctx, &v1.SubmitOrderParams{
+			Side:             v1.Buy,
+			Segment:          segment,
+			AllowPartialFill: true,
+			PartnerId:        *partnerId,
+			ClientId:         *clientId,
+			ClientINN:        *clientINN,
+			CurrencyPair:     "USD/TJS",
+			Quantity:         "100.00",
+			OrderType:        v1.MarketOrder,
+			Account:          acc,
+			Fee:              fee,
+		})
+		switch {
+		case err == v1.ErrDuplicateOrder:
+			log.Printf("market submit: duplicate detected within 2 minutes, skipping")
+		case err != nil:
+			log.Printf("market submit: %v", err)
+		default:
+			log.Printf("market submitted: ref_id=%d order_day=%s status=%d filled=%s avg_rate=%s cause=%q",
+				mkt.RefId, mkt.OrderDay, mkt.Status, mkt.FilledQuantity, mkt.AverageRate, mkt.Cause)
+		}
+	}
+
 	// 2. Filter the client's orders. ClientID is mandatory; the SDK defaults
 	// OrderDayFrom/To to today and today+1 when both are empty.
 	filtered, err := client.FilterClientOrders(ctx, &v1.FilterClientOrdersParams{
@@ -187,8 +220,8 @@ func main() {
 	}
 	log.Printf("found %d orders for client %s", len(filtered.Orders), *clientId)
 	for _, o := range filtered.Orders {
-		log.Printf("  order_id=%d day=%s side=%d status=%d qty=%s remaining=%s rate=%s ref=%d",
-			o.OrderId, o.OrderDay, o.Side, o.Status,
+		log.Printf("  order_id=%d day=%s side=%d status=%d type=%d counterparty=%d qty=%s remaining=%s rate=%s ref=%d",
+			o.OrderId, o.OrderDay, o.Side, o.Status, o.OrderType, o.CounterpartySegment,
 			o.Quantity, o.RemainingQuantity, o.LimitRate, o.RefId)
 	}
 

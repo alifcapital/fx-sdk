@@ -22,12 +22,13 @@ SDK для интеграции партнёров с системой FX Core (
 8. [Отмена ордера — CancelOrder](#отмена-ордера--cancelorder)
 9. [Фильтрация ордеров — FilterClientOrders](#фильтрация-ордеров--filterclientorders)
 10. [Стакан цен — GetOrderBookDepth](#стакан-цен--getorderbookdepth)
-11. [Подписка на события ордеров — SubscribeOrderEvents](#подписка-на-события-ордеров--subscribeorderevents)
-12. [Подписка на сделки — SubscribeTrades](#подписка-на-сделки--subscribetrades)
-13. [Повторная обработка незакрытых сделок — RetryUnsettled](#повторная-обработка-незакрытых-сделок--retryunsettled)
-14. [Справочник типов и констант](#справочник-типов-и-констант)
-15. [Обработка ошибок](#обработка-ошибок)
-16. [Полный пример](#полный-пример)
+11. [Валютные пары — GetCurrencyPairs](#валютные-пары--getcurrencypairs)
+12. [Подписка на события ордеров — SubscribeOrderEvents](#подписка-на-события-ордеров--subscribeorderevents)
+13. [Подписка на сделки — SubscribeTrades](#подписка-на-сделки--subscribetrades)
+14. [Повторная обработка незакрытых сделок — RetryUnsettled](#повторная-обработка-незакрытых-сделок--retryunsettled)
+15. [Справочник типов и констант](#справочник-типов-и-констант)
+16. [Обработка ошибок](#обработка-ошибок)
+17. [Полный пример](#полный-пример)
 
 ---
 
@@ -40,7 +41,7 @@ SDK оборачивает три gRPC-сервиса FX Core и синхрон�
 |--------|-----------|
 | `OrderService` | Жизненный цикл ордеров (отправка, отмена, стакан, фильтр, события) |
 | `TradeService` | Поток исполненных сделок (двунаправленный стрим с подтверждением) |
-| `PartnerService` | Справочные данные (валютные пары) |
+| `PartnerService` | Справочные данные (валютные пары и их торговые характеристики) |
 
 Ключевые особенности:
 
@@ -97,6 +98,23 @@ psql "postgres://user:pass@host:5432/fxdb" -f go/db.sql
 
 > **Важно:** SDK выполняет SQL-запросы напрямую к этим таблицам. Имена и
 > структура колонок менять нельзя.
+
+### Миграция для существующих баз
+
+Поддержка **рыночных ордеров** (`MarketOrder`) и **ограничения контрагента**
+(`CounterpartySegment`) добавила две колонки в `client_orders` и сделала
+`limit_rate` необязательной (у рыночного ордера цены нет — её задаёт стакан).
+Если схема была создана раньше, выполните:
+
+```sql
+ALTER TABLE client_orders ADD COLUMN IF NOT EXISTS order_type SMALLINT NOT NULL DEFAULT 1;
+ALTER TABLE client_orders ADD COLUMN IF NOT EXISTS counterparty_segment SMALLINT NOT NULL DEFAULT 0;
+ALTER TABLE client_orders ALTER COLUMN limit_rate DROP NOT NULL;
+```
+
+Значения по умолчанию соответствуют прежнему поведению: `order_type = 1`
+(лимитный ордер), `counterparty_segment = 0` (любой контрагент), поэтому
+существующие строки остаются корректными.
 
 ---
 
@@ -318,10 +336,11 @@ res, err := client.SubmitOrder(ctx, &v1.SubmitOrderParams{
     ClientINN:        "07128321",    // ИНН клиента
     CurrencyPair:     "USD/TJS",
     Quantity:         "1000.00",     // десятичная строка
-    LimitRate:        "9.31",        // десятичная строка
+    LimitRate:        "9.31",        // десятичная строка (обязателен для лимитного ордера)
     MinTradeQuantity: "100.00",      // мин. объём частичного исполнения
     Account:          acc,           // произвольный JSONB
     Fee:              fee,           // произвольный JSONB
+    OrderType:        v1.LimitOrder, // 0 или v1.LimitOrder — лимитный; v1.MarketOrder — рыночный
 })
 if err != nil {
     if errors.Is(err, v1.ErrDuplicateOrder) {
@@ -336,7 +355,7 @@ log.Printf("ref_id=%d order_day=%s status=%d cause=%q",
 ```
 
 **Обязательные поля:** `ClientId`, `PartnerId`, `Segment` (должен быть в диапазоне
-`Retail..Treasury`).
+`Retail..Treasury`), `LimitRate` — **только для лимитного ордера**.
 
 **Результат `SubmitOrderResult`:**
 
@@ -346,10 +365,68 @@ log.Printf("ref_id=%d order_day=%s status=%d cause=%q",
 | `OrderDay` | Дата ордера в формате `YYYY-MM-DD` |
 | `Status` | Статус, возвращённый Core (см. `OrderStatus`) |
 | `Cause` | Причина отклонения/ошибки, если есть |
+| `FilledQuantity` | Исполненный объём — **только для рыночного ордера**, иначе пусто |
+| `AverageRate` | Средневзвешенный курс исполнения — **только для рыночного ордера**, иначе пусто |
 
 > **Защита от дублей:** если ордер с теми же `side`, `limit_rate`, `quantity`,
-> `currency_pair`, `partner_id`, `client_id` был отправлен за последние 2 минуты,
-> возвращается `v1.ErrDuplicateOrder`.
+> `currency_pair`, `order_type`, `partner_id`, `client_id` был отправлен за
+> последние 2 минуты, возвращается `v1.ErrDuplicateOrder`.
+
+### Тип ордера — лимитный и рыночный
+
+| `OrderType` | Цена | Неисполненный остаток |
+|-------------|------|-----------------------|
+| `v1.LimitOrder` (1, по умолчанию) | `LimitRate` или лучше | остаётся в стакане до исполнения, истечения срока или отмены |
+| `v1.MarketOrder` (2) | лучшие доступные цены стакана | **отменяется**, в стакане ничего не остаётся |
+
+Рыночный ордер **игнорирует `LimitRate`** — SDK не отправляет это поле в Core и
+записывает в `client_orders.limit_rate` значение `NULL`. Курс заранее неизвестен,
+поэтому исполнение возвращается **синхронно** в `FilledQuantity` и `AverageRate`:
+
+```go
+res, err := client.SubmitOrder(ctx, &v1.SubmitOrderParams{
+    Side:             v1.Buy,
+    Segment:          v1.Retail,
+    AllowPartialFill: true,
+    PartnerId:        partnerId,
+    ClientId:         "1271",
+    ClientINN:        "07128321",
+    CurrencyPair:     "USD/TJS",
+    Quantity:         "100.00",
+    OrderType:        v1.MarketOrder, // LimitRate не указывается
+    Account:          acc,
+    Fee:              fee,
+})
+if err != nil {
+    log.Fatalf("ошибка отправки рыночного ордера: %v", err)
+}
+
+log.Printf("исполнено %s по среднему курсу %s (статус %d)",
+    res.FilledQuantity, res.AverageRate, res.Status)
+```
+
+> **Важно:** `FilledQuantity` / `AverageRate` — это сводка для немедленного
+> отображения курса клиенту. Сами сделки всё равно приходят в подписке
+> `SubscribeTrades`, и именно она остаётся источником истины для расчётов: SDK
+> уменьшает `remaining_quantity` только по событиям сделок, поэтому один и тот же
+> объём никогда не учитывается дважды.
+
+### Ограничение контрагента — `CounterpartySegment`
+
+По умолчанию (`v1.AnyCounterparty`, значение `0`) ордер может встретиться с
+контрагентом из любого сегмента. Ордер сегмента `Treasury` может дополнительно
+потребовать сводить его **только с казначейскими контрагентами**:
+
+```go
+res, err := client.SubmitOrder(ctx, &v1.SubmitOrderParams{
+    Segment:             v1.Treasury,
+    CounterpartySegment: v1.Treasury, // только казначейские контрагенты
+    // ... остальные поля
+})
+```
+
+Любое другое значение отклоняется с `v1.ErrInvalidCounterpartySegment`, а попытка
+задать `Treasury` для ордера другого сегмента — с `v1.ErrTreasuryCounterpartyOnly`.
 
 ---
 
@@ -408,8 +485,8 @@ if err != nil {
 }
 
 for _, o := range res.Orders {
-    log.Printf("order_id=%d day=%s side=%d status=%d qty=%s remaining=%s rate=%s ref=%d",
-        o.OrderId, o.OrderDay, o.Side, o.Status,
+    log.Printf("order_id=%d day=%s side=%d status=%d type=%d counterparty=%d qty=%s remaining=%s rate=%s ref=%d",
+        o.OrderId, o.OrderDay, o.Side, o.Status, o.OrderType, o.CounterpartySegment,
         o.Quantity, o.RemainingQuantity, o.LimitRate, o.RefId)
 }
 ```
@@ -453,6 +530,47 @@ for _, b := range depth.Bids {
 (суммарный объём), обе — десятичные строки.
 
 **Обязательные поля:** `ClientId`, `PartnerId`, корректный `Segment`.
+
+---
+
+## Валютные пары — GetCurrencyPairs
+
+Возвращает список доступных для торговли валютных пар и их торговые
+характеристики. Партнёр определяется по метаданным `partner-id`, которые SDK
+добавляет к каждому запросу, поэтому параметры не нужны.
+
+```go
+pairs, err := client.GetCurrencyPairs(ctx)
+if err != nil {
+    log.Fatalf("ошибка получения валютных пар: %v", err)
+}
+
+for _, p := range pairs {
+    log.Printf("%s active=%v min_lot=%s min_trade_qty=%s valid_rate_percent=%d nbt_rate=%s",
+        p.Pair, p.IsActive, p.MinLot, p.MinTradeQuantity, p.ValidRatePercent, p.NbtRate)
+}
+```
+
+**Элемент `v1.CurrencyPair`:**
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `Pair` | `string` | Валютная пара, например `"USD/TJS"` |
+| `MinLot` | `string` | Минимальный лот (десятичная строка) |
+| `MinTradeQuantity` | `string` | Минимальный торгуемый объём (десятичная строка) |
+| `ValidRatePercent` | `int32` | Допустимый коридор в % вокруг курса |
+| `NbtRate` | `string` | Курс НБТ (десятичная строка) |
+| `IsActive` | `bool` | Открыта ли пара для торговли |
+
+Пару с `IsActive = false` торговать нельзя — Core отклонит ордер. `MinLot` и
+`MinTradeQuantity` удобно проверять до вызова `SubmitOrder`, а `ValidRatePercent`
+задаёт, насколько `LimitRate` может отклоняться от курса, чтобы ордер был принят.
+
+> **Переименование поля.** Раньше это поле называлось `NbtAvgRate`
+> (`nbt_avg_rate` в proto). Теперь — `NbtRate` (`nbt_rate`): это курс НБТ, а не
+> усреднённое значение. Номер поля в proto (`5`) и тип не изменились, поэтому
+> совместимость на уровне протокола сохранена — обновить нужно только код,
+> который читал `NbtAvgRate`.
 
 ---
 
@@ -633,6 +751,20 @@ v1.Corporate // 2 — корпоративный
 v1.Treasury  // 3 — казначейство
 ```
 
+Нулевое значение `Segment` не является сегментом ордера — это значение по
+умолчанию для `CounterpartySegment`:
+
+```go
+v1.AnyCounterparty // 0 — контрагент из любого сегмента
+```
+
+### Тип ордера — `OrderType`
+
+```go
+v1.LimitOrder  // 1 — лимитный (по умолчанию, если поле не задано)
+v1.MarketOrder // 2 — рыночный: без LimitRate, остаток отменяется
+```
+
 ### Статус ордера — `OrderStatus`
 
 | Константа | Значение | Описание |
@@ -666,6 +798,10 @@ v1.Treasury  // 3 — казначейство
 | `v1.ErrDuplicateOrder` | Дубликат ордера в пределах 2 минут |
 | `v1.ErrClientIDRequired` | Не указан `client_id` |
 | `v1.ErrPartnerIDRequired` | Не указан `partner_id` |
+| `v1.ErrLimitRateRequired` | Лимитный ордер без `LimitRate` |
+| `v1.ErrInvalidOrderType` | `OrderType` не `LimitOrder` и не `MarketOrder` |
+| `v1.ErrInvalidCounterpartySegment` | `CounterpartySegment` не `AnyCounterparty` и не `Treasury` |
+| `v1.ErrTreasuryCounterpartyOnly` | `CounterpartySegment = Treasury` задан для не-казначейского ордера |
 
 ```go
 res, err := client.SubmitOrder(ctx, params)
@@ -747,6 +883,8 @@ if err := g.Wait(); err != nil {
 ## Чек-лист интеграции
 
 - [ ] Создана схема БД из [`go/db.sql`](go/db.sql) (PostgreSQL + TimescaleDB).
+- [ ] Для существующих баз применена [миграция](#миграция-для-существующих-баз)
+      (`order_type`, `counterparty_segment`, nullable `limit_rate`).
 - [ ] Получены `sdk_id` (36-символьный UUID), `api_key` и `partner_id`.
 - [ ] DEV: подключение через `insecure` (без mTLS). PROD: настроен **mTLS**
       (клиентский сертификат + ключ + CA) через `WithDialOptions`.

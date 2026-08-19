@@ -23,7 +23,7 @@ func (c *Client) GetCurrencyPairs(ctx context.Context) ([]CurrencyPair, error) {
 			MinLot:           p.GetMinLot(),
 			MinTradeQuantity: p.GetMinTradeQuantity(),
 			ValidRatePercent: p.GetValidRatePercent(),
-			NbtAvgRate:       p.GetNbtAvgRate(),
+			NbtRate:          p.GetNbtRate(),
 			IsActive:         p.GetIsActive(),
 		})
 	}
