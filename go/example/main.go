@@ -20,6 +20,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"slices"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -33,14 +34,14 @@ import (
 
 func main() {
 	var (
-		target    = flag.String("target", "192.168.97.7:80", "FX Core gRPC address")
-		sdkId     = flag.String("sdk-id", "019eee39-cc7f-722e-a3f1-c2c010b141a4", "SDK identifier")
-		apiKey    = flag.String("api-key", "qt4AiUntt6bSOb4326CBbRSU2PfoihuvBbMzMS4KhRROsyjg8HZAjFmvdRWD26+afrCDuqfxgn5JXzld5tHSDg==", "API key")
+		target    = flag.String("target", "dev-fx-api.alif.tj:443", "FX Core gRPC address")
+		sdkId     = flag.String("sdk-id", "01a056da-7ba2-79af-bd2e-20be91f8d24e", "SDK identifier")
+		apiKey    = flag.String("api-key", "R81H9BQ+usXmrpXd/rOt9q7aQEQieF14NzX9qsYwY66SrDQmCAtqqbLURvgpkvB5OYKzjP5dF1Qn6CjCtBTrAA==", "API key")
 		dsn       = flag.String("dsn", "postgres://postgres:pass123@192.168.215.2:5432/fxdb?sslmode=disable", "Postgres DSN for the local orders table")
-		partnerId = flag.String("partner-id", "019eee2d-d765-7273-8582-ab6982339896", "partner identifier")
-		clientId  = flag.String("client-id", "1271", "client identifier (required for filter)")
-		clientINN = flag.String("client-inn", "07128321", "client INN (taxpayer ID)")
-		insecureC = flag.Bool("insecure", true, "use plaintext gRPC (dev only)")
+		partnerId = flag.String("partner-id", "019fcb0f-33f1-756c-9688-12a0fc8289ea", "partner identifier")
+		clientId  = flag.String("client-id", "1275", "client identifier (required for filter)")
+		clientINN = flag.String("client-inn", "07128325", "client INN (taxpayer ID)")
+		insecureC = flag.Bool("insecure", false, "use plaintext gRPC (dev only)")
 		cancel    = flag.Bool("cancel", false, "cancel the order after submission")
 		market    = flag.Bool("market", false, "also submit a market order (priced by the book)")
 	)
@@ -67,7 +68,7 @@ func main() {
 		v1.WithMaxRetries(3),
 		v1.WithRetryBackoff(100*time.Millisecond, 5*time.Second),
 	}
-	
+
 	if *insecureC {
 		opts = append(opts, v1.WithDialOptions(
 			grpc.WithTransportCredentials(insecure.NewCredentials()),
@@ -129,6 +130,55 @@ func main() {
 			}
 		}
 	})
+	// 0c-bis. Reconcile the hour that just closed against the Core, a few
+	// minutes past the hour so the window is settled on both sides. On a
+	// mismatch the SDK pulls the Core's trades for that same window, stores
+	// anything missing locally and runs handleTrade for it, then re-checks.
+	// Whatever is still mismatched after that needs a human — ReconcileDiff
+	// says which trades diverged.
+	g.Go(func() error {
+		t := time.NewTicker(time.Hour)
+		defer t.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-t.C:
+				// PreviousHour is the last completed hour in the SDK
+				// timezone (UTC+05:00). Do not derive it from the host
+				// clock: the Core compares the hour in +05, so a host in
+				// another zone would ask about the wrong window.
+				day, hour := v1.PreviousHour()
+				params := &v1.ReconcileParams{
+					PartnerId: *partnerId,
+					Day:       day,
+					Hour:      hour,
+				}
+				res, err := client.ReconcileRepair(ctx, params, handleTrade)
+				if err != nil {
+					log.Printf("reconcile repair %s h%02d: %v", params.Day, params.Hour, err)
+					continue
+				}
+				if res.Resolved() {
+					log.Printf("reconciled %s h%02d: recovered=%d settled=%d",
+						params.Day, params.Hour, res.Recovered, res.Settled)
+					continue
+				}
+				log.Printf("reconcile %s h%02d STILL MISMATCHED: core=%d recovered=%d settled=%d settle_failed=%d failed=%d",
+					params.Day, params.Hour, res.CoreTrades, res.Recovered,
+					res.Settled, res.SettleFailed, res.Failed)
+				diff, derr := client.ReconcileDiff(ctx, params)
+				if derr != nil {
+					log.Printf("reconcile diff %s h%02d: %v", params.Day, params.Hour, derr)
+					continue
+				}
+				log.Printf("  missing_locally=%d missing_remotely=%d mismatched=%d unsettled=%d",
+					len(diff.MissingLocally), len(diff.MissingRemotely),
+					len(diff.Mismatched), len(diff.Unsettled))
+			}
+		}
+	})
+
 	// 0d. Fetch the available currency pairs and their trading specs. The
 	// partner is identified by metadata, so no parameters are required.
 	pairs, err := client.GetCurrencyPairs(ctx)
@@ -145,8 +195,8 @@ func main() {
 	segment := v1.Retail
 	var acc = make(map[string]string)
 	// account details
-	acc["debit_account"] = "1271"
-	acc["credit_account"] = "4571"
+	acc["debit_account"] = "1274"
+	acc["credit_account"] = "4574"
 	var fee = make(map[string]string)
 	// fixed fee in percentage
 	fee["fixed"] = "0.05"
@@ -154,15 +204,15 @@ func main() {
 	// 1. Submit a small USD/TJS buy limit order at 9.31. OrderType is left unset,
 	// which the SDK treats as v1.LimitOrder.
 	submitted, err := client.SubmitOrder(ctx, &v1.SubmitOrderParams{
-		Side:             v1.Buy,
+		Side:             v1.Sell,
 		Segment:          segment,
 		AllowPartialFill: true,
 		PartnerId:        *partnerId,
 		ClientId:         *clientId,
 		ClientINN:        *clientINN,
 		CurrencyPair:     "USD/TJS",
-		Quantity:         "1000.00",
-		LimitRate:        "9.31",
+		Quantity:         "2000.00",
+		LimitRate:        "9.280",
 		MinTradeQuantity: "100.00",
 		Account:          acc,
 		Fee:              fee,
@@ -184,14 +234,14 @@ func main() {
 	// individual trades still arrive on the trade subscription.
 	if *market {
 		mkt, err := client.SubmitOrder(ctx, &v1.SubmitOrderParams{
-			Side:             v1.Buy,
+			Side:             v1.Sell,
 			Segment:          segment,
 			AllowPartialFill: true,
 			PartnerId:        *partnerId,
 			ClientId:         *clientId,
 			ClientINN:        *clientINN,
 			CurrencyPair:     "USD/TJS",
-			Quantity:         "100.00",
+			Quantity:         "30000.00",
 			OrderType:        v1.MarketOrder,
 			Account:          acc,
 			Fee:              fee,
@@ -238,8 +288,8 @@ func main() {
 	} else {
 		log.Printf("Order Book USD/TJS:")
 		log.Printf("  Asks:")
-		for i := len(depth.Asks) - 1; i >= 0; i-- {
-			log.Printf("    %s: %s", depth.Asks[i].Rate, depth.Asks[i].TotalQuantity)
+		for _, v := range slices.Backward(depth.Asks) {
+			log.Printf("    %s: %s", v.Rate, v.TotalQuantity)
 		}
 		log.Printf("  Bids:")
 		for _, b := range depth.Bids {

@@ -6,7 +6,7 @@ import (
 	"fmt"
 
 	"github.com/alifcapital/fx-sdk/go/pkg"
-	"github.com/govalues/decimal"
+	"github.com/quagmt/udecimal"
 )
 
 // OrderStatus represents the lifecycle state of an order.
@@ -43,6 +43,13 @@ var (
 	// ErrTreasuryCounterpartyOnly is returned when a non-treasury order asks to
 	// trade against treasury counterparties only.
 	ErrTreasuryCounterpartyOnly = errors.New("fx-sdk: only a Treasury order may set CounterpartySegment = Treasury")
+	// ErrInvalidDay is returned when a day parameter is not a YYYY-MM-DD date.
+	ErrInvalidDay = errors.New("fx-sdk: day must be a YYYY-MM-DD date")
+	// ErrInvalidHour is returned when an hour parameter is outside 0..23.
+	ErrInvalidHour = errors.New("fx-sdk: hour must be in 0..23")
+	// ErrInvalidRecoverRange is returned when the recovery window is inverted
+	// or wider than maxRecoverDays.
+	ErrInvalidRecoverRange = errors.New("fx-sdk: invalid recovery day range")
 )
 
 // Side represents the order direction.
@@ -256,29 +263,28 @@ type TradeEvent struct {
 	Side           Side
 	Account        map[string]string // account JSONB stored on the parent order
 	FeeConfig      map[string]string // fee JSONB stored on the parent order
-	Settlement     decimal.Decimal   // (filled_quantity * execution_rate)+-Fee
-	Fee            decimal.Decimal   // settlement * fee_config.fixed / 100
+	Settlement     udecimal.Decimal  // (filled_quantity * execution_rate)+-Fee
+	Fee            udecimal.Decimal  // settlement * fee_config.fixed / 100
 }
 
 func (e *TradeEvent) Cal() error {
-	qty, err := decimal.Parse(e.FilledQuantity)
+	qty, err := udecimal.Parse(e.FilledQuantity)
 	if err != nil {
 		return fmt.Errorf("parse filled_quantity: %w", err)
 	}
-	rate, err := decimal.Parse(e.ExecutionRate)
+	rate, err := udecimal.Parse(e.ExecutionRate)
 	if err != nil {
 		return fmt.Errorf("parse execution_rate: %w", err)
 	}
-	m, err := qty.Mul(rate)
-	if err != nil {
-		return fmt.Errorf("compute settlement: %w", err)
-	}
+	// Mul, Add and Sub cannot overflow: udecimal falls back to big.Int, so only
+	// parsing and the division inside Percentage can fail here.
+	m := qty.Mul(rate)
 	// fixed fee in percentage %0.5
 	fx, ok := e.FeeConfig["fixed"]
 	if !ok {
 		fx = "0"
 	}
-	e.Fee, err = decimal.Parse(fx)
+	e.Fee, err = udecimal.Parse(fx)
 	if err != nil {
 		return fmt.Errorf("parse fee.fixed: %w", err)
 	}
@@ -288,18 +294,10 @@ func (e *TradeEvent) Cal() error {
 	}
 	// side: buy / sell
 	if e.Side == Buy {
-		e.Settlement, err = m.Add(e.Fee)
-		if err != nil {
-			return fmt.Errorf("compute settlement: %w", err)
-		}
-		e.Settlement = e.Settlement.Round(6)
+		e.Settlement = m.Add(e.Fee).RoundBank(6)
 		return nil
 	}
-	e.Settlement, err = m.Sub(e.Fee)
-	if err != nil {
-		return fmt.Errorf("compute settlement: %w", err)
-	}
-	e.Settlement = e.Settlement.Round(6)
+	e.Settlement = m.Sub(e.Fee).RoundBank(6)
 	return nil
 }
 
@@ -318,3 +316,202 @@ func (e *TradeEvent) Cal() error {
 // partner's account movement must no-op if it has already been applied for that
 // trade.
 type TradeEventHandler func(ctx context.Context, event *TradeEvent) error
+
+// ReconcileParams selects the one-hour window to reconcile against the Core.
+// The window is [Day Hour:00:00, Day Hour+1:00:00) on client_trades.executed_at.
+type ReconcileParams struct {
+	PartnerId string // required
+	Day       string // required; YYYY-MM-DD, matched against client_trades.trading_day
+	Hour      int    // required; 0..23, the hour of Day to reconcile
+}
+
+// ReconcileResult is the outcome of reconciling one hour, as persisted in the
+// reconciliations table.
+type ReconcileResult struct {
+	Day         string
+	Hour        int
+	LocalHash   int64 // XOR checksum over every local trade in the window
+	RemoteHash  int64 // the Core's checksum for the same window
+	LocalTrades int64 // trades that fed LocalHash; 0 with LocalHash 0 means an empty window
+	// Matched reports whether the two checksums agree. A false value is not an
+	// error — it means this hour diverged and needs a drill-down.
+	Matched bool
+	// Done is the stored is_done flag: true once the hour needs no further
+	// attention, either because it matched or because a partner closed it by
+	// hand after investigating a mismatch. It never reverts to false.
+	Done bool
+}
+
+// ReconcileInfo is the JSON payload written to reconciliations.info. It records
+// what the two sides actually reported, so a mismatch can be investigated after
+// the fact without re-running the check.
+type ReconcileInfo struct {
+	LocalHash   int64  `json:"local_hash"`
+	RemoteHash  int64  `json:"remote_hash"`
+	LocalTrades int64  `json:"local_trades"`
+	DtFrom      string `json:"dt_from"`
+	DtTo        string `json:"dt_to"`
+	CheckedAt   string `json:"checked_at"` // RFC3339, UTC
+}
+
+// GetTradesParams selects the window of Core-side trades to fetch. It is the
+// drill-down counterpart to ReconcileParams: same day, but an explicit time
+// range rather than an hour slot, so a whole day can be pulled in one call.
+type GetTradesParams struct {
+	PartnerId string // required
+	Day       string // required; YYYY-MM-DD
+	DtFrom    string // optional; "YYYY-MM-DD HH:MM:SS", defaults to Day 00:00:00
+	DtTo      string // optional; "YYYY-MM-DD HH:MM:SS", defaults to the start of the next day
+}
+
+// Trade is the SDK-level representation of a trade as the Core recorded it,
+// with no local enrichment. It is what GetTrades returns — the counterpart to
+// TradeEvent, which is the same trade after the SDK has joined it to the parent
+// order and computed settlement and fee.
+type Trade struct {
+	TradeId        int64
+	OrderId        int64
+	RefId          int64 // local client_orders.ref_id the trade belongs to
+	OrderStatus    OrderStatus
+	Side           Side
+	OrderDay       string // YYYY-MM-DD
+	TradingDay     string // YYYY-MM-DD
+	FilledQuantity string
+	ExecutionRate  string
+	ExecutedAt     string
+	PartnerId      string
+}
+
+// LocalTrade is a client_trades row as stored by the partner, including the
+// bookkeeping columns the Core knows nothing about (ack, settlement state).
+// Those columns are the point: they usually explain why an hour diverged.
+type LocalTrade struct {
+	TradeId        int64
+	OrderId        int64
+	RefId          int64
+	Side           Side
+	FilledQuantity string
+	ExecutionRate  string
+	ExecutedAt     string
+	Ack            bool   // the trade was acked to the Core (received & stored)
+	Settled        bool   // partner-side settlement completed; does not affect the checksum
+	SettleAttempts int16  // settlement handler attempts so far
+	SettleError    string // last settlement error, empty once settled
+}
+
+// TradeMismatch is a trade both sides have under the same (trade_id, order_id)
+// but do not agree on. Fields names the columns that differ, so a caller can
+// log the disagreement without diffing the two structs itself.
+type TradeMismatch struct {
+	TradeId int64
+	OrderId int64
+	Fields  []string // e.g. ["filled_quantity", "execution_rate"]
+	Core    Trade
+	Local   LocalTrade
+}
+
+// TradeDiff explains a divergent reconciliation hour trade by trade. Every
+// slice is empty when the two sides agree; Unsettled may be non-empty even
+// then, since it reports local settlement state rather than a disagreement
+// with the Core.
+type TradeDiff struct {
+	Day         string
+	Hour        int
+	CoreTrades  int // trades the Core returned for the window
+	LocalTrades int // client_trades rows in the window
+	// MissingLocally are trades the Core has that never reached the local
+	// database — the case that actually loses money, since no settlement ran.
+	MissingLocally []Trade
+	// MissingRemotely are local trades the Core did not return. Usually a
+	// window or timezone artefact rather than a real divergence, since the SDK
+	// only ever stores trades the Core pushed.
+	MissingRemotely []LocalTrade
+	// Mismatched are trades present on both sides with differing values.
+	Mismatched []TradeMismatch
+	// Unsettled are local trades still awaiting partner-side settlement. They
+	// are not a divergence — both sides hold them and the data agrees — and do
+	// not affect the checksum; they are reported because an hour under
+	// investigation is a good moment to see that money has not moved.
+	// RetryUnsettled is what clears them.
+	Unsettled []LocalTrade
+}
+
+// Divergent reports whether the hour holds a genuine disagreement with the Core
+// — a trade missing on one side, or one both sides hold with different values.
+// Unsettled trades alone are not a divergence: the data matches, the partner
+// has simply not finished settling it.
+func (d *TradeDiff) Divergent() bool {
+	return len(d.MissingLocally) > 0 || len(d.MissingRemotely) > 0 || len(d.Mismatched) > 0
+}
+
+// RepairResult reports what one ReconcileRepair run found and did.
+type RepairResult struct {
+	Day  string
+	Hour int
+	// Before is the reconciliation that decided whether a repair was needed. A
+	// Before.Matched of true means the hour was already clean and none of the
+	// counters below ran.
+	Before *ReconcileResult
+	// After is the re-check taken once the repair ran, and is the hour's
+	// current state whenever it is non-nil. It is nil both when no repair was
+	// needed and when the repair changed nothing — in either case Before is
+	// still current. An After.Matched of false is an hour that needs a human:
+	// run ReconcileDiff on it.
+	After *ReconcileResult
+	// CoreTrades is how many trades the Core returned for the window; it is how
+	// much was examined, not how much was wrong.
+	CoreTrades int
+	// Recovered is how many of those were missing locally and were stored by
+	// this run. It is the number that matters — anything non-zero is trade data
+	// the stream never delivered.
+	Recovered int
+	// Settled counts trades whose settlement handler this run ran successfully,
+	// whether this run stored them or an earlier one did.
+	Settled int
+	// SettleFailed counts trades stored but whose handler returned an error.
+	// They are left settled = FALSE with the error recorded, exactly as on the
+	// stream, so RetryUnsettled picks them up.
+	SettleFailed int
+	// Failed counts trades that could not be stored at all, e.g. their parent
+	// order is missing from client_orders. These are logged and skipped; a
+	// non-zero value needs investigation.
+	Failed int
+}
+
+// Resolved reports whether the hour is clean now — it either reconciled on the
+// first check or matched again after the repair. A false value means the hour
+// still diverges in a way ReconcileRepair cannot fix, and ReconcileDiff is the
+// next step.
+func (r *RepairResult) Resolved() bool {
+	if r.Before != nil && r.Before.Matched {
+		return true
+	}
+	return r.After != nil && r.After.Matched
+}
+
+// RecoverParams selects the days to catch up on after downtime. DayTo is
+// inclusive and defaults to DayFrom.
+type RecoverParams struct {
+	PartnerId string // required
+	DayFrom   string // required; YYYY-MM-DD
+	DayTo     string // optional; YYYY-MM-DD, inclusive, defaults to DayFrom
+}
+
+// RecoverResult reports what a RecoverTrades run found and did. CoreTrades is
+// how much was examined; Recovered is how much was actually missing, and is the
+// number that matters — a healthy catch-up after a short outage recovers a
+// handful, a zero means the stream had already delivered everything.
+type RecoverResult struct {
+	Days       []string // the days pulled, oldest first
+	CoreTrades int      // trades the Core returned across the window
+	Recovered  int      // of those, trades this run stored because they were missing locally
+	Settled    int      // trades the handler settled during this run
+	// SettleFailed counts trades stored but whose settlement handler returned
+	// an error. They are left settled = FALSE with the error recorded, exactly
+	// as on the stream, so RetryUnsettled picks them up.
+	SettleFailed int
+	// Failed counts trades that could not be stored at all, e.g. their parent
+	// order is missing from client_orders. These are logged and skipped; a
+	// non-zero value needs investigation.
+	Failed int
+}

@@ -69,11 +69,15 @@ func (c *Client) SubmitOrder(ctx context.Context, p *SubmitOrderParams) (*Submit
 	// 0. Check for duplicates in the last 2 minutes.
 	// Scoped to today's partition so the hypertable only scans a single chunk.
 	// it is like rate limiter
+	//
+	// "Today" is the UTC+05:00 calendar day, matching the order_day default, so
+	// the chunk this scans is the one the insert below lands in even when the
+	// session timezone would put the two on different sides of midnight.
 	var exists bool
 	err := c.db.QueryRow(ctx,
 		`SELECT EXISTS (
 			SELECT 1 FROM client_orders
-			WHERE order_day = CURRENT_DATE
+			WHERE order_day = (NOW() `+atTZ+`)::date
 			  AND submitted_at > NOW() - INTERVAL '2 minutes'
 			  AND partner_id = $3
 			  AND client_id = $4
@@ -90,8 +94,9 @@ func (c *Client) SubmitOrder(ctx context.Context, p *SubmitOrderParams) (*Submit
 	}
 
 	// 1. Insert into client_orders; the DB assigns ref_id (BIGSERIAL) and
-	// order_day (DEFAULT CURRENT_DATE). Read both back so subsequent updates
-	// can target the composite PK.
+	// order_day (defaults to the UTC+05:00 calendar day). Read both back so
+	// subsequent updates can target the composite PK, and so the order_day sent
+	// to the Core is the one actually stored.
 	var (
 		refId    int64
 		orderDay string

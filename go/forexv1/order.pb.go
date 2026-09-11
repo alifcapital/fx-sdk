@@ -551,22 +551,24 @@ func (x *FilterClientOrdersResponse) GetOrders() []*OrderInfo {
 }
 
 type OrderInfo struct {
-	state               protoimpl.MessageState `protogen:"open.v1"`
-	OrderId             *int64                 `protobuf:"varint,1,opt,name=order_id,json=orderId" json:"order_id,omitempty"`
-	RefId               *int64                 `protobuf:"varint,2,opt,name=ref_id,json=refId" json:"ref_id,omitempty"`
-	Side                *int32                 `protobuf:"varint,3,opt,name=side" json:"side,omitempty"`
-	Segment             *int32                 `protobuf:"varint,4,opt,name=segment" json:"segment,omitempty"`
-	Status              *int32                 `protobuf:"varint,5,opt,name=status" json:"status,omitempty"`
-	AllowPartialFill    *bool                  `protobuf:"varint,6,opt,name=allow_partial_fill,json=allowPartialFill" json:"allow_partial_fill,omitempty"`
-	CurrencyPair        *string                `protobuf:"bytes,7,opt,name=currency_pair,json=currencyPair" json:"currency_pair,omitempty"`
-	Quantity            *string                `protobuf:"bytes,8,opt,name=quantity" json:"quantity,omitempty"`
-	LimitRate           *string                `protobuf:"bytes,9,opt,name=limit_rate,json=limitRate" json:"limit_rate,omitempty"`
-	MinTradeQuantity    *string                `protobuf:"bytes,10,opt,name=min_trade_quantity,json=minTradeQuantity" json:"min_trade_quantity,omitempty"`
-	RemainingQuantity   *string                `protobuf:"bytes,11,opt,name=remaining_quantity,json=remainingQuantity" json:"remaining_quantity,omitempty"`
-	CreatedAt           *string                `protobuf:"bytes,12,opt,name=created_at,json=createdAt" json:"created_at,omitempty"`
-	OrderDay            *string                `protobuf:"bytes,13,opt,name=order_day,json=orderDay" json:"order_day,omitempty"`
-	CounterpartySegment *int32                 `protobuf:"varint,14,opt,name=counterparty_segment,json=counterpartySegment" json:"counterparty_segment,omitempty"` // 0 = any counterparty; 3 = treasury only
-	OrderType           *int32                 `protobuf:"varint,15,opt,name=order_type,json=orderType" json:"order_type,omitempty"`                               // 1 = limit, 2 = market
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	OrderId          *int64                 `protobuf:"varint,1,opt,name=order_id,json=orderId" json:"order_id,omitempty"`
+	RefId            *int64                 `protobuf:"varint,2,opt,name=ref_id,json=refId" json:"ref_id,omitempty"`
+	Side             *int32                 `protobuf:"varint,3,opt,name=side" json:"side,omitempty"`
+	Segment          *int32                 `protobuf:"varint,4,opt,name=segment" json:"segment,omitempty"`
+	Status           *int32                 `protobuf:"varint,5,opt,name=status" json:"status,omitempty"`
+	AllowPartialFill *bool                  `protobuf:"varint,6,opt,name=allow_partial_fill,json=allowPartialFill" json:"allow_partial_fill,omitempty"`
+	CurrencyPair     *string                `protobuf:"bytes,7,opt,name=currency_pair,json=currencyPair" json:"currency_pair,omitempty"`
+	Quantity         *string                `protobuf:"bytes,8,opt,name=quantity" json:"quantity,omitempty"`
+	// Unset for a market order: it carries no client rate, and the engine's
+	// internal slippage bound is not reported as one.
+	LimitRate           *string `protobuf:"bytes,9,opt,name=limit_rate,json=limitRate" json:"limit_rate,omitempty"`
+	MinTradeQuantity    *string `protobuf:"bytes,10,opt,name=min_trade_quantity,json=minTradeQuantity" json:"min_trade_quantity,omitempty"`
+	RemainingQuantity   *string `protobuf:"bytes,11,opt,name=remaining_quantity,json=remainingQuantity" json:"remaining_quantity,omitempty"`
+	CreatedAt           *string `protobuf:"bytes,12,opt,name=created_at,json=createdAt" json:"created_at,omitempty"`
+	OrderDay            *string `protobuf:"bytes,13,opt,name=order_day,json=orderDay" json:"order_day,omitempty"`
+	CounterpartySegment *int32  `protobuf:"varint,14,opt,name=counterparty_segment,json=counterpartySegment" json:"counterparty_segment,omitempty"` // 0 = any counterparty; 3 = treasury only
+	OrderType           *int32  `protobuf:"varint,15,opt,name=order_type,json=orderType" json:"order_type,omitempty"`                               // 1 = limit, 2 = market
 	unknownFields       protoimpl.UnknownFields
 	sizeCache           protoimpl.SizeCache
 }

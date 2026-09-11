@@ -66,6 +66,16 @@ No Makefile, linter config, or CI pipeline exists yet.
 - Client identification uses `partner_id` + `client_id` + `client_inn` (taxpayer ID).
 - Market segments are int32: Retail, Corporate, Treasury.
 - Order days use `YYYY-MM-DD` date strings.
+- **The FX Core operates in UTC+05:00** (Tajikistan, no DST). Every date, hour
+  and window bound is that offset's calendar date and wall clock — never the
+  host's or the PostgreSQL session's. The Core is the authority, so the offset
+  is fixed, not configurable. Go code takes it from `v1.TimeZone` /
+  `v1.Today()` / `v1.PreviousHour()`; SQL anchors every `TIMESTAMPTZ` compared
+  against a date, or rendered as text, with the `atTZ` constant
+  (`AT TIME ZONE INTERVAL '+05:00'`). Use the `INTERVAL` form: Postgres reads
+  `AT TIME ZONE '+05'` with the inverted POSIX sign convention, silently
+  shifting the window ten hours. Getting this wrong makes every reconciliation
+  hour diverge and files `order_day` on the wrong day around midnight.
 - Order types are int32: 1 = limit (the default when unset), 2 = market. A market
   order carries no `limit_rate` (NULL in `client_orders`), its unfilled remainder
   is cancelled rather than rested, and its fill is reported synchronously in

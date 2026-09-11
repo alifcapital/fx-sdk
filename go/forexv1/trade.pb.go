@@ -326,13 +326,14 @@ func (x *ReconciliationResponse) GetHashCheck() int64 {
 }
 
 type GetTradesRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	TradingDay    *string                `protobuf:"bytes,1,opt,name=trading_day,json=tradingDay" json:"trading_day,omitempty"`
-	DtFrom        *string                `protobuf:"bytes,2,opt,name=dt_from,json=dtFrom" json:"dt_from,omitempty"`
-	DtTo          *string                `protobuf:"bytes,3,opt,name=dt_to,json=dtTo" json:"dt_to,omitempty"`
-	PartnerId     *string                `protobuf:"bytes,4,opt,name=partner_id,json=partnerId" json:"partner_id,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	TradingDay       *string                `protobuf:"bytes,1,opt,name=trading_day,json=tradingDay" json:"trading_day,omitempty"`
+	DtFrom           *string                `protobuf:"bytes,2,opt,name=dt_from,json=dtFrom" json:"dt_from,omitempty"`
+	DtTo             *string                `protobuf:"bytes,3,opt,name=dt_to,json=dtTo" json:"dt_to,omitempty"`
+	PartnerId        *string                `protobuf:"bytes,4,opt,name=partner_id,json=partnerId" json:"partner_id,omitempty"`
+	IsReconciliation *bool                  `protobuf:"varint,5,opt,name=is_reconciliation,json=isReconciliation" json:"is_reconciliation,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *GetTradesRequest) Reset() {
@@ -391,6 +392,13 @@ func (x *GetTradesRequest) GetPartnerId() string {
 		return *x.PartnerId
 	}
 	return ""
+}
+
+func (x *GetTradesRequest) GetIsReconciliation() bool {
+	if x != nil && x.IsReconciliation != nil {
+		return *x.IsReconciliation
+	}
+	return false
 }
 
 type GetTradesResponse struct {
@@ -474,14 +482,15 @@ const file_forex_v1_trade_proto_rawDesc = "" +
 	"partner_id\x18\x04 \x01(\tR\tpartnerId\"7\n" +
 	"\x16ReconciliationResponse\x12\x1d\n" +
 	"\n" +
-	"hash_check\x18\x01 \x01(\x03R\thashCheck\"\x80\x01\n" +
+	"hash_check\x18\x01 \x01(\x03R\thashCheck\"\xad\x01\n" +
 	"\x10GetTradesRequest\x12\x1f\n" +
 	"\vtrading_day\x18\x01 \x01(\tR\n" +
 	"tradingDay\x12\x17\n" +
 	"\adt_from\x18\x02 \x01(\tR\x06dtFrom\x12\x13\n" +
 	"\x05dt_to\x18\x03 \x01(\tR\x04dtTo\x12\x1d\n" +
 	"\n" +
-	"partner_id\x18\x04 \x01(\tR\tpartnerId\"D\n" +
+	"partner_id\x18\x04 \x01(\tR\tpartnerId\x12+\n" +
+	"\x11is_reconciliation\x18\x05 \x01(\bR\x10isReconciliation\"D\n" +
 	"\x11GetTradesResponse\x12/\n" +
 	"\x06trades\x18\x01 \x03(\v2\x17.forex.v1.TradeResponseR\x06trades2\xe7\x01\n" +
 	"\fTradeService\x12<\n" +
