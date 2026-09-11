@@ -102,35 +102,6 @@ psql "postgres://user:pass@host:5432/fxdb" -f go/db.sql
 > **Важно:** SDK выполняет SQL-запросы напрямую к этим таблицам. Имена и
 > структура колонок менять нельзя.
 
-### Миграция для существующих баз
-
-Поддержка **рыночных ордеров** (`MarketOrder`) и **ограничения контрагента**
-(`CounterpartySegment`) добавила две колонки в `client_orders` и сделала
-`limit_rate` необязательной (у рыночного ордера цены нет — её задаёт стакан).
-Если схема была создана раньше, выполните:
-
-```sql
-ALTER TABLE client_orders ADD COLUMN IF NOT EXISTS order_type SMALLINT NOT NULL DEFAULT 1;
-ALTER TABLE client_orders ADD COLUMN IF NOT EXISTS counterparty_segment SMALLINT NOT NULL DEFAULT 0;
-ALTER TABLE client_orders ALTER COLUMN limit_rate DROP NOT NULL;
-```
-
-Значения по умолчанию соответствуют прежнему поведению: `order_type = 1`
-(лимитный ордер), `counterparty_segment = 0` (любой контрагент), поэтому
-существующие строки остаются корректными.
-
-Кроме того, значение по умолчанию для `order_day` больше не берётся из
-`CURRENT_DATE` — оно жёстко привязано к UTC+05:00 (см.
-[Часовой пояс — UTC+05:00](#часовой-пояс--utc0500)):
-
-```sql
-ALTER TABLE client_orders
-  ALTER COLUMN order_day SET DEFAULT (NOW() AT TIME ZONE INTERVAL '+05:00')::date;
-```
-
-Существующие строки не меняются. Если сессия БД уже работала в +05, значение
-получается тем же, и мигрировать данные не нужно.
-
 ---
 
 ## Часовой пояс — UTC+05:00
@@ -1277,8 +1248,6 @@ if err := g.Wait(); err != nil {
 ## Чек-лист интеграции
 
 - [ ] Создана схема БД из [`go/db.sql`](go/db.sql) (PostgreSQL + TimescaleDB).
-- [ ] Для существующих баз применена [миграция](#миграция-для-существующих-баз)
-      (`order_type`, `counterparty_segment`, nullable `limit_rate`).
 - [ ] Получены `sdk_id` (36-символьный UUID), `api_key` и `partner_id`.
 - [ ] DEV: подключение через `insecure` (без mTLS). PROD: настроен **mTLS**
       (клиентский сертификат + ключ + CA) через `WithDialOptions`.
