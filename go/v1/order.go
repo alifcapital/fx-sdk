@@ -66,6 +66,27 @@ func (c *Client) SubmitOrder(ctx context.Context, p *SubmitOrderParams) (*Submit
 	if p.MinTradeQuantity != "" {
 		minTradeQuantity = &p.MinTradeQuantity
 	}
+
+	// Precision is checked before anything is written or sent. The local columns
+	// are NUMERIC(28,6) and the Core refuses a finer value outright, so without
+	// this a seven-decimal quantity would be stored rounded, rejected remotely,
+	// and then block its own correction: the duplicate probe below compares the
+	// caller's raw string against the rounded row, so it misses the mistake and
+	// matches the fix instead, answering ErrDuplicateOrder for two minutes.
+	if err := checkDecimal("quantity", p.Quantity); err != nil {
+		return nil, err
+	}
+	if limitRate != nil {
+		if err := checkDecimal("limit_rate", *limitRate); err != nil {
+			return nil, err
+		}
+	}
+	if minTradeQuantity != nil {
+		if err := checkDecimal("min_trade_quantity", *minTradeQuantity); err != nil {
+			return nil, err
+		}
+	}
+
 	// 0. Check for duplicates in the last 2 minutes.
 	// Scoped to today's partition so the hypertable only scans a single chunk.
 	// it is like rate limiter

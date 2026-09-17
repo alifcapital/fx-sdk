@@ -22,20 +22,24 @@ const (
 )
 
 type SubmitOrderRequest struct {
-	state               protoimpl.MessageState `protogen:"open.v1"`
-	RefId               *int64                 `protobuf:"varint,1,opt,name=ref_id,json=refId" json:"ref_id,omitempty"` // partner's reference id, prevents duplicate orders on retry
-	Side                *int32                 `protobuf:"varint,2,opt,name=side" json:"side,omitempty"`                // 1 = buy, 2 = sell
-	Segment             *int32                 `protobuf:"varint,3,opt,name=segment" json:"segment,omitempty"`          // 1 = Retail, 2 = Corporate, 3 = Treasury
-	AllowPartialFill    *bool                  `protobuf:"varint,4,opt,name=allow_partial_fill,json=allowPartialFill" json:"allow_partial_fill,omitempty"`
-	ClientId            *string                `protobuf:"bytes,5,opt,name=client_id,json=clientId" json:"client_id,omitempty"`                            // client's unique identifier
-	ClientInn           *string                `protobuf:"bytes,6,opt,name=client_inn,json=clientInn" json:"client_inn,omitempty"`                         // client's INN (taxpayer identification number)
-	CurrencyPair        *string                `protobuf:"bytes,7,opt,name=currency_pair,json=currencyPair" json:"currency_pair,omitempty"`                // e.g. "USD/TJS"
-	Quantity            *string                `protobuf:"bytes,8,opt,name=quantity" json:"quantity,omitempty"`                                            // quantity is in the Base currency (the first currency in the pair)
-	LimitRate           *string                `protobuf:"bytes,9,opt,name=limit_rate,json=limitRate" json:"limit_rate,omitempty"`                         // client's rate, positive decimal string
-	OrderDay            *string                `protobuf:"bytes,10,opt,name=order_day,json=orderDay" json:"order_day,omitempty"`                           // order day 'YYYY-MM-DD'
-	MinTradeQuantity    *string                `protobuf:"bytes,11,opt,name=min_trade_quantity,json=minTradeQuantity" json:"min_trade_quantity,omitempty"` // minimum trade quantity if allow_partial_fill is true, decimal string
-	PartnerId           *string                `protobuf:"bytes,12,opt,name=partner_id,json=partnerId" json:"partner_id,omitempty"`
-	CounterpartySegment *int32                 `protobuf:"varint,13,opt,name=counterparty_segment,json=counterpartySegment" json:"counterparty_segment,omitempty"` // 0 = any counterparty; only a treasury order may set 3 = treasury only
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	RefId            *int64                 `protobuf:"varint,1,opt,name=ref_id,json=refId" json:"ref_id,omitempty"` // partner's reference id, prevents duplicate orders on retry
+	Side             *int32                 `protobuf:"varint,2,opt,name=side" json:"side,omitempty"`                // 1 = buy, 2 = sell
+	Segment          *int32                 `protobuf:"varint,3,opt,name=segment" json:"segment,omitempty"`          // 1 = Retail, 2 = Corporate, 3 = Treasury
+	AllowPartialFill *bool                  `protobuf:"varint,4,opt,name=allow_partial_fill,json=allowPartialFill" json:"allow_partial_fill,omitempty"`
+	ClientId         *string                `protobuf:"bytes,5,opt,name=client_id,json=clientId" json:"client_id,omitempty"`             // client's unique identifier
+	ClientInn        *string                `protobuf:"bytes,6,opt,name=client_inn,json=clientInn" json:"client_inn,omitempty"`          // client's INN (taxpayer identification number)
+	CurrencyPair     *string                `protobuf:"bytes,7,opt,name=currency_pair,json=currencyPair" json:"currency_pair,omitempty"` // e.g. "USD/TJS"
+	// Every decimal string below carries at most 6 decimal places, which is what
+	// the engine stores. A finer value is rejected rather than rounded: the amount
+	// a partner reserved funds for has to be the amount that trades. Trailing
+	// zeros do not count as precision, so "1000.1000000" is accepted.
+	Quantity            *string `protobuf:"bytes,8,opt,name=quantity" json:"quantity,omitempty"`                                            // quantity is in the Base currency (the first currency in the pair)
+	LimitRate           *string `protobuf:"bytes,9,opt,name=limit_rate,json=limitRate" json:"limit_rate,omitempty"`                         // client's rate, positive decimal string
+	OrderDay            *string `protobuf:"bytes,10,opt,name=order_day,json=orderDay" json:"order_day,omitempty"`                           // order day 'YYYY-MM-DD'
+	MinTradeQuantity    *string `protobuf:"bytes,11,opt,name=min_trade_quantity,json=minTradeQuantity" json:"min_trade_quantity,omitempty"` // minimum trade quantity if allow_partial_fill is true, decimal string
+	PartnerId           *string `protobuf:"bytes,12,opt,name=partner_id,json=partnerId" json:"partner_id,omitempty"`
+	CounterpartySegment *int32  `protobuf:"varint,13,opt,name=counterparty_segment,json=counterpartySegment" json:"counterparty_segment,omitempty"` // 0 = any counterparty; only a treasury order may set 3 = treasury only
 	// 1 = limit (default when unset), 2 = market. A market order ignores
 	// limit_rate, executes against the best available prices, and its unfilled
 	// remainder is cancelled instead of resting in the book.

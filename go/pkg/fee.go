@@ -13,7 +13,11 @@ func Percentage(amount udecimal.Decimal, percentage udecimal.Decimal) (udecimal.
 	if err != nil {
 		return udecimal.Zero, err
 	}
-	// RoundBank is half-to-even, matching the NUMERIC(28,6) columns the result
-	// is stored in.
+	// Rounded here, to the scale of the NUMERIC(28,6) columns the result is
+	// stored in, so the database never has to round it itself. The mode is not
+	// the database's: PostgreSQL rounds NUMERIC half away from zero, RoundBank
+	// is half to even, and the two differ on an exact half. That only matters
+	// for a value stored unrounded, which this is not — but anyone reusing this
+	// helper on a value that goes to the database raw should use RoundHAZ.
 	return amount.RoundBank(6), nil
 }

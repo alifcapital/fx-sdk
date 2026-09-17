@@ -282,8 +282,22 @@ func (x *ReconciliationRequest) GetPartnerId() string {
 }
 
 type ReconciliationResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	HashCheck     *int64                 `protobuf:"varint,1,opt,name=hash_check,json=hashCheck" json:"hash_check,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// hash_check is the original fingerprint: bit_xor(hashint8(trade_id) #
+	// hashint8(order_id)). It is kept only so SDK versions predating hash_v2
+	// keep working, and it is unsound — a row whose trade_id equals its order_id
+	// contributes zero and is therefore invisible, and any two rows with equal
+	// contributions cancel out. Compare hash_v2 and trade_count instead, and
+	// treat hash_check as deprecated.
+	HashCheck *int64 `protobuf:"varint,1,opt,name=hash_check,json=hashCheck" json:"hash_check,omitempty"`
+	// hash_v2 hashes the whole settlement tuple — both ids, the side, the amount
+	// and the rate — so a missing row cannot contribute nothing, and a row whose
+	// values differ between the two sides is a mismatch rather than a match.
+	HashV2 *int64 `protobuf:"varint,2,opt,name=hash_v2,json=hashV2" json:"hash_v2,omitempty"`
+	// trade_count is the number of rows the hash covers. An empty window and a
+	// window whose contributions cancel both hash to zero; only the count tells
+	// them apart.
+	TradeCount    *int64 `protobuf:"varint,3,opt,name=trade_count,json=tradeCount" json:"trade_count,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -321,6 +335,20 @@ func (*ReconciliationResponse) Descriptor() ([]byte, []int) {
 func (x *ReconciliationResponse) GetHashCheck() int64 {
 	if x != nil && x.HashCheck != nil {
 		return *x.HashCheck
+	}
+	return 0
+}
+
+func (x *ReconciliationResponse) GetHashV2() int64 {
+	if x != nil && x.HashV2 != nil {
+		return *x.HashV2
+	}
+	return 0
+}
+
+func (x *ReconciliationResponse) GetTradeCount() int64 {
+	if x != nil && x.TradeCount != nil {
+		return *x.TradeCount
 	}
 	return 0
 }
@@ -479,10 +507,13 @@ const file_forex_v1_trade_proto_rawDesc = "" +
 	"\adt_from\x18\x02 \x01(\tR\x06dtFrom\x12\x13\n" +
 	"\x05dt_to\x18\x03 \x01(\tR\x04dtTo\x12\x1d\n" +
 	"\n" +
-	"partner_id\x18\x04 \x01(\tR\tpartnerId\"7\n" +
+	"partner_id\x18\x04 \x01(\tR\tpartnerId\"q\n" +
 	"\x16ReconciliationResponse\x12\x1d\n" +
 	"\n" +
-	"hash_check\x18\x01 \x01(\x03R\thashCheck\"\xad\x01\n" +
+	"hash_check\x18\x01 \x01(\x03R\thashCheck\x12\x17\n" +
+	"\ahash_v2\x18\x02 \x01(\x03R\x06hashV2\x12\x1f\n" +
+	"\vtrade_count\x18\x03 \x01(\x03R\n" +
+	"tradeCount\"\xad\x01\n" +
 	"\x10GetTradesRequest\x12\x1f\n" +
 	"\vtrading_day\x18\x01 \x01(\tR\n" +
 	"tradingDay\x12\x17\n" +

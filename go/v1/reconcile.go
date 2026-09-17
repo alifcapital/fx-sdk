@@ -47,9 +47,20 @@ func (p *ReconcileParams) window() (from, to string, err error) {
 // records the outcome in the reconciliations table.
 //
 // The comparison is an order-independent XOR checksum over the trades in the
-// window:
+// window, taken over the whole tuple rather than the ids alone:
 //
-//	bit_xor(hashint8(trade_id) # hashint8(order_id))
+//	bit_xor(hashtextextended(trade_id || order_id || side ||
+//	                         filled_quantity || execution_rate, 0))
+//
+// plus the number of rows it covers. Both are needed. Hashing only the two ids —
+// which is what this did until the Core grew hash_v2 — made a row whose trade_id
+// equals its order_id XOR to zero, so losing it changed nothing; let any two
+// rows with equal contributions cancel; and could not see a quantity or rate
+// that differed between the sides at all. The count separates an empty window
+// from one whose contributions cancelled, since both hash to zero.
+//
+// Against a Core that does not send the new fields the old checksum is used, and
+// ReconcileResult.HashVersion says which comparison actually ran.
 //
 // Every stored trade contributes, settled or not. The question reconciliation
 // answers is whether the two sides hold the same set of trades — whether
@@ -77,8 +88,8 @@ func (p *ReconcileParams) window() (from, to string, err error) {
 //	})
 //
 // A mismatch is reported through ReconcileResult.Matched, not as an error; an
-// error means the check itself could not be completed. The XOR checksum tells
-// you *that* the hour diverged, never *which* trades diverged.
+// error means the check itself could not be completed. The checksum tells you
+// *that* the hour diverged, never *which* trades diverged.
 //
 // Reconcile only checks. ReconcileRepair is the same check that then fixes what
 // it can — use it if you want a mismatched hour repaired automatically instead
@@ -92,24 +103,34 @@ func (c *Client) Reconcile(ctx context.Context, p *ReconcileParams) (*ReconcileR
 		return nil, err
 	}
 
-	// 1. Local checksum. bit_xor over an empty window is NULL, which would be
-	// indistinguishable from a genuine zero checksum, so it is folded to 0 and
-	// the row count is carried separately in info to tell the two apart.
+	// 1. Local checksums, both forms plus the row count. bit_xor over an empty
+	// window is NULL, which would be indistinguishable from a genuine zero
+	// checksum, so it is folded to 0 and the count tells the two apart.
+	//
+	// The v2 expression must match the Core's byte for byte. Every column it
+	// touches has the same type on both sides — BIGINT, SMALLINT and two
+	// NUMERIC(28,6) — so ::text renders identically; a type or scale change on
+	// either side would turn every hour into a false mismatch.
 	var (
-		localHash   int64
+		localHashV1 int64
+		localHashV2 int64
 		localTrades int64
 	)
 	// executed_at is TIMESTAMPTZ while the bounds are a plain date plus hours,
 	// so the comparison would otherwise resolve them in the session timezone.
 	// atTZ pins them to UTC+05:00, the same hour the Core is asked for below.
 	if err := c.db.QueryRow(ctx,
-		`SELECT COALESCE(bit_xor(hashint8(trade_id) # hashint8(order_id)), 0)::bigint, COUNT(*)
+		`SELECT COALESCE(bit_xor(hashint8(trade_id) # hashint8(order_id)), 0)::bigint,
+		        COALESCE(bit_xor(hashtextextended(
+		            trade_id || ':' || order_id || ':' || side || ':' ||
+		            filled_quantity::text || ':' || execution_rate::text, 0)), 0)::bigint,
+		        COUNT(*)
 		   FROM client_trades
 		  WHERE trading_day = $1::date
 		    AND executed_at >= ($1::date + make_interval(hours => $2::int)) `+atTZ+`
 		    AND executed_at <  ($1::date + make_interval(hours => $2::int + 1)) `+atTZ,
 		p.Day, p.Hour,
-	).Scan(&localHash, &localTrades); err != nil {
+	).Scan(&localHashV1, &localHashV2, &localTrades); err != nil {
 		return nil, fmt.Errorf("fx-sdk: local reconciliation hash %s h%02d: %w", p.Day, p.Hour, err)
 	}
 
@@ -125,26 +146,34 @@ func (c *Client) Reconcile(ctx context.Context, p *ReconcileParams) (*ReconcileR
 	if err != nil {
 		return nil, fmt.Errorf("fx-sdk: reconciliation %s h%02d: %w", p.Day, p.Hour, err)
 	}
-	remoteHash := resp.GetHashCheck()
-	matched := localHash == remoteHash
+	cmp := compareChecksums(localHashV1, localHashV2, localTrades, resp)
+	localHash, remoteHash := cmp.local, cmp.remote
+	hashVersion, remoteTrades := cmp.version, cmp.remoteTrades
+	matched := cmp.matched
 
 	// 3. Record the outcome. is_done means "this hour needs no further
 	// attention": a match closes it outright, a mismatch leaves it open for
 	// investigation. A row a partner has already closed by hand stays closed.
 	info := ReconcileInfo{
-		LocalHash:   localHash,
-		RemoteHash:  remoteHash,
-		LocalTrades: localTrades,
-		DtFrom:      dtFrom,
-		DtTo:        dtTo,
-		CheckedAt:   time.Now().In(TimeZone).Format(time.RFC3339),
+		LocalHash:    localHash,
+		RemoteHash:   remoteHash,
+		HashVersion:  hashVersion,
+		LocalTrades:  localTrades,
+		RemoteTrades: remoteTrades,
+		DtFrom:       dtFrom,
+		DtTo:         dtTo,
+		CheckedAt:    time.Now().In(TimeZone).Format(time.RFC3339),
+		LocalHashV1:  localHashV1,
+		RemoteHashV1: resp.GetHashCheck(),
 	}
 	res := &ReconcileResult{
-		Day:         p.Day,
-		Hour:        p.Hour,
-		LocalHash:   localHash,
-		RemoteHash:  remoteHash,
-		LocalTrades: localTrades,
+		Day:          p.Day,
+		Hour:         p.Hour,
+		LocalHash:    localHash,
+		RemoteHash:   remoteHash,
+		HashVersion:  hashVersion,
+		LocalTrades:  localTrades,
+		RemoteTrades: remoteTrades,
 	}
 	if err := c.db.QueryRow(ctx,
 		`INSERT INTO reconciliations (dt, hour, is_matched, info, is_done)
@@ -426,4 +455,40 @@ func sameDecimal(a, b string) bool {
 		return a == b
 	}
 	return da.Equal(db)
+}
+
+// reconcileComparison is which checksums were compared and what came of it.
+type reconcileComparison struct {
+	local, remote int64
+	version       int
+	remoteTrades  int64 // -1 when the Core sent no count
+	matched       bool
+}
+
+// compareChecksums prefers the tuple checksum and falls back to the id-only one
+// only against a Core that sends nothing else.
+//
+// Presence decides, not value. The fields are optional and zero is a legitimate
+// checksum — an empty window produces it — so reading them with the getters and
+// testing for 0 would silently downgrade every quiet hour to the weaker
+// comparison. Both new fields have to be there: the count is not decoration, it
+// is what separates an empty window from one whose contributions cancelled, and
+// comparing the hash alone would keep that blind spot open.
+func compareChecksums(localV1, localV2, localTrades int64, resp *forexv1.ReconciliationResponse) reconcileComparison {
+	if resp.HashV2 == nil || resp.TradeCount == nil {
+		return reconcileComparison{
+			local:        localV1,
+			remote:       resp.GetHashCheck(),
+			version:      1,
+			remoteTrades: -1,
+			matched:      localV1 == resp.GetHashCheck(),
+		}
+	}
+	return reconcileComparison{
+		local:        localV2,
+		remote:       resp.GetHashV2(),
+		version:      2,
+		remoteTrades: resp.GetTradeCount(),
+		matched:      localV2 == resp.GetHashV2() && localTrades == resp.GetTradeCount(),
+	}
 }

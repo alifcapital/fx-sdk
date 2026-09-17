@@ -39,8 +39,8 @@ func main() {
 		apiKey    = flag.String("api-key", "R81H9BQ+usXmrpXd/rOt9q7aQEQieF14NzX9qsYwY66SrDQmCAtqqbLURvgpkvB5OYKzjP5dF1Qn6CjCtBTrAA==", "API key")
 		dsn       = flag.String("dsn", "postgres://postgres:pass123@192.168.215.2:5432/fxdb?sslmode=disable", "Postgres DSN for the local orders table")
 		partnerId = flag.String("partner-id", "019fcb0f-33f1-756c-9688-12a0fc8289ea", "partner identifier")
-		clientId  = flag.String("client-id", "1275", "client identifier (required for filter)")
-		clientINN = flag.String("client-inn", "07128325", "client INN (taxpayer ID)")
+		clientId  = flag.String("client-id", "1276", "client identifier (required for filter)")
+		clientINN = flag.String("client-inn", "07128326", "client INN (taxpayer ID)")
 		insecureC = flag.Bool("insecure", false, "use plaintext gRPC (dev only)")
 		cancel    = flag.Bool("cancel", false, "cancel the order after submission")
 		market    = flag.Bool("market", false, "also submit a market order (priced by the book)")
@@ -130,51 +130,76 @@ func main() {
 			}
 		}
 	})
-	// 0c-bis. Reconcile the hour that just closed against the Core, a few
-	// minutes past the hour so the window is settled on both sides. On a
-	// mismatch the SDK pulls the Core's trades for that same window, stores
-	// anything missing locally and runs handleTrade for it, then re-checks.
-	// Whatever is still mismatched after that needs a human — ReconcileDiff
-	// says which trades diverged.
+	// 0c-bis. Reconcile completed hours against the Core: on startup every hour
+	// of the day that has already closed, then a few minutes past every hour for
+	// the one that just closed. On a mismatch the SDK pulls the Core's trades for
+	// that same window, stores anything missing locally and runs handleTrade for
+	// it, then re-checks. Whatever is still mismatched after that needs a human —
+	// ReconcileDiff says which trades diverged.
 	g.Go(func() error {
-		t := time.NewTicker(time.Hour)
-		defer t.Stop()
+		reconcileHour := func(day string, hour int) {
+			params := &v1.ReconcileParams{
+				PartnerId: *partnerId,
+				Day:       day,
+				Hour:      hour,
+			}
+			res, err := client.ReconcileRepair(ctx, params, handleTrade)
+			if err != nil {
+				log.Printf("reconcile repair %s h%02d: %v", params.Day, params.Hour, err)
+				return
+			}
+			if res.Resolved() {
+				log.Printf("reconciled %s h%02d: recovered=%d settled=%d",
+					params.Day, params.Hour, res.Recovered, res.Settled)
+				return
+			}
+			log.Printf("reconcile %s h%02d STILL MISMATCHED: core=%d recovered=%d settled=%d settle_failed=%d failed=%d",
+				params.Day, params.Hour, res.CoreTrades, res.Recovered,
+				res.Settled, res.SettleFailed, res.Failed)
+			diff, derr := client.ReconcileDiff(ctx, params)
+			if derr != nil {
+				log.Printf("reconcile diff %s h%02d: %v", params.Day, params.Hour, derr)
+				return
+			}
+			log.Printf("  missing_locally=%d missing_remotely=%d mismatched=%d unsettled=%d",
+				len(diff.MissingLocally), len(diff.MissingRemotely),
+				len(diff.Mismatched), len(diff.Unsettled))
+		}
+
+		// Startup catch-up, from 00:00. A process that was down for six hours
+		// has six unreconciled slots, not one, so the hourly tick alone would
+		// leave permanent holes in the reconciliations table. Every hour is
+		// upserted on (dt, hour), so re-walking hours already recorded is cheap
+		// and idempotent — an hour that matched simply matches again.
+		//
+		// PreviousHour is the last completed hour in the SDK timezone
+		// (UTC+05:00). Do not derive it from the host clock: the Core compares
+		// the hour in +05, so a host in another zone would ask about the wrong
+		// window. Just after midnight it belongs to yesterday and today has no
+		// completed hour yet, so that single hour is all there is to do.
+		day, hour := v1.PreviousHour()
+		if day == v1.Today() {
+			for h := range hour {
+				if ctx.Err() != nil {
+					return ctx.Err()
+				}
+				reconcileHour(day, h)
+			}
+		}
+		reconcileHour(day, hour)
+
 		for {
+			// Anchored to the wall clock, not to process start: the run lands
+			// at hh:05 whenever the process happened to boot.
+			next := time.Now().In(v1.TimeZone).Truncate(time.Hour).Add(time.Hour + 5*time.Minute)
+			timer := time.NewTimer(time.Until(next))
 			select {
 			case <-ctx.Done():
+				timer.Stop()
 				return ctx.Err()
-			case <-t.C:
-				// PreviousHour is the last completed hour in the SDK
-				// timezone (UTC+05:00). Do not derive it from the host
-				// clock: the Core compares the hour in +05, so a host in
-				// another zone would ask about the wrong window.
+			case <-timer.C:
 				day, hour := v1.PreviousHour()
-				params := &v1.ReconcileParams{
-					PartnerId: *partnerId,
-					Day:       day,
-					Hour:      hour,
-				}
-				res, err := client.ReconcileRepair(ctx, params, handleTrade)
-				if err != nil {
-					log.Printf("reconcile repair %s h%02d: %v", params.Day, params.Hour, err)
-					continue
-				}
-				if res.Resolved() {
-					log.Printf("reconciled %s h%02d: recovered=%d settled=%d",
-						params.Day, params.Hour, res.Recovered, res.Settled)
-					continue
-				}
-				log.Printf("reconcile %s h%02d STILL MISMATCHED: core=%d recovered=%d settled=%d settle_failed=%d failed=%d",
-					params.Day, params.Hour, res.CoreTrades, res.Recovered,
-					res.Settled, res.SettleFailed, res.Failed)
-				diff, derr := client.ReconcileDiff(ctx, params)
-				if derr != nil {
-					log.Printf("reconcile diff %s h%02d: %v", params.Day, params.Hour, derr)
-					continue
-				}
-				log.Printf("  missing_locally=%d missing_remotely=%d mismatched=%d unsettled=%d",
-					len(diff.MissingLocally), len(diff.MissingRemotely),
-					len(diff.Mismatched), len(diff.Unsettled))
+				reconcileHour(day, hour)
 			}
 		}
 	})
@@ -195,8 +220,8 @@ func main() {
 	segment := v1.Retail
 	var acc = make(map[string]string)
 	// account details
-	acc["debit_account"] = "1274"
-	acc["credit_account"] = "4574"
+	acc["debit_account"] = "1276"
+	acc["credit_account"] = "4576"
 	var fee = make(map[string]string)
 	// fixed fee in percentage
 	fee["fixed"] = "0.05"
@@ -204,14 +229,14 @@ func main() {
 	// 1. Submit a small USD/TJS buy limit order at 9.31. OrderType is left unset,
 	// which the SDK treats as v1.LimitOrder.
 	submitted, err := client.SubmitOrder(ctx, &v1.SubmitOrderParams{
-		Side:             v1.Sell,
+		Side:             v1.Buy,
 		Segment:          segment,
 		AllowPartialFill: true,
 		PartnerId:        *partnerId,
 		ClientId:         *clientId,
 		ClientINN:        *clientINN,
 		CurrencyPair:     "USD/TJS",
-		Quantity:         "2000.00",
+		Quantity:         "5000.00",
 		LimitRate:        "9.280",
 		MinTradeQuantity: "100.00",
 		Account:          acc,

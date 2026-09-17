@@ -328,11 +328,20 @@ type ReconcileParams struct {
 // ReconcileResult is the outcome of reconciling one hour, as persisted in the
 // reconciliations table.
 type ReconcileResult struct {
-	Day         string
-	Hour        int
-	LocalHash   int64 // XOR checksum over every local trade in the window
-	RemoteHash  int64 // the Core's checksum for the same window
-	LocalTrades int64 // trades that fed LocalHash; 0 with LocalHash 0 means an empty window
+	Day  string
+	Hour int
+	// LocalHash and RemoteHash are the checksums that were actually compared:
+	// the tuple checksum against a Core that reports one, the legacy id-only
+	// checksum against an older Core. HashVersion says which.
+	LocalHash  int64
+	RemoteHash int64
+	// HashVersion is 2 for the tuple checksum and 1 when the Core answered
+	// without one. Version 1 cannot see a lost row whose trade_id equals its
+	// order_id, and cannot see a quantity or rate that differs between the two
+	// sides at all, so a match reported under it is a weaker statement.
+	HashVersion  int
+	LocalTrades  int64 // trades that fed LocalHash
+	RemoteTrades int64 // the Core's count for the same window; -1 if it sent none
 	// Matched reports whether the two checksums agree. A false value is not an
 	// error — it means this hour diverged and needs a drill-down.
 	Matched bool
@@ -346,12 +355,18 @@ type ReconcileResult struct {
 // what the two sides actually reported, so a mismatch can be investigated after
 // the fact without re-running the check.
 type ReconcileInfo struct {
-	LocalHash   int64  `json:"local_hash"`
-	RemoteHash  int64  `json:"remote_hash"`
-	LocalTrades int64  `json:"local_trades"`
-	DtFrom      string `json:"dt_from"`
-	DtTo        string `json:"dt_to"`
-	CheckedAt   string `json:"checked_at"` // RFC3339, UTC
+	LocalHash    int64  `json:"local_hash"`
+	RemoteHash   int64  `json:"remote_hash"`
+	HashVersion  int    `json:"hash_version"`
+	LocalTrades  int64  `json:"local_trades"`
+	RemoteTrades int64  `json:"remote_trades"`
+	DtFrom       string `json:"dt_from"`
+	DtTo         string `json:"dt_to"`
+	CheckedAt    string `json:"checked_at"` // RFC3339, UTC
+	// The legacy checksums are kept alongside so an hour checked during the
+	// rollout can be compared against one checked before it.
+	LocalHashV1  int64 `json:"local_hash_v1"`
+	RemoteHashV1 int64 `json:"remote_hash_v1"`
 }
 
 // GetTradesParams selects the window of Core-side trades to fetch. It is the
