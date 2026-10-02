@@ -1,1 +1,4 @@
 .DS_Store
+go/example/ca-bundle.pem
+go/example/client.crt
+go/example/client.key
