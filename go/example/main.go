@@ -10,13 +10,23 @@
 //	    -dsn="postgres://user:pass@localhost:5432/fx?sslmode=disable" \
 //	    -client-id=CLIENT_42 \
 //	    -client-inn=123456789 \
+//	    -tls-cert=client.crt \
+//	    -tls-key=client.key \
+//	    -tls-ca=ca.crt \
 //	    -market
+//
+// -tls-cert and -tls-key enable mTLS: the client presents that certificate to
+// the FX Core. -tls-ca verifies the server against a private CA instead of the
+// system roots; omit it when the server certificate is publicly trusted.
 package main
 
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
+	"errors"
 	"flag"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -34,16 +44,23 @@ import (
 
 func main() {
 	var (
-		target    = flag.String("target", "dev-fx-api.alif.tj:443", "FX Core gRPC address")
-		sdkId     = flag.String("sdk-id", "01a056da-7ba2-79af-bd2e-20be91f8d24e", "SDK identifier")
-		apiKey    = flag.String("api-key", "R81H9BQ+usXmrpXd/rOt9q7aQEQieF14NzX9qsYwY66SrDQmCAtqqbLURvgpkvB5OYKzjP5dF1Qn6CjCtBTrAA==", "API key")
+		target    = flag.String("target", "test:443", "FX Core gRPC address")
+		sdkId     = flag.String("sdk-id", "01ssdfae7-faff-7212-abed-9sdfsdff", "SDK identifier")
+		apiKey    = flag.String("api-key", "p8sdfsdft+usdfu7YEVEwDw==", "API key")
 		dsn       = flag.String("dsn", "postgres://postgres:pass123@192.168.215.2:5432/fxdb?sslmode=disable", "Postgres DSN for the local orders table")
-		partnerId = flag.String("partner-id", "019fcb0f-33f1-756c-9688-12a0fc8289ea", "partner identifier")
-		clientId  = flag.String("client-id", "1276", "client identifier (required for filter)")
-		clientINN = flag.String("client-inn", "07128326", "client INN (taxpayer ID)")
+		partnerId = flag.String("partner-id", "01a0sdf9-c09b-7a8d-9784-3csdfa1ce", "partner identifier")
+		clientId  = flag.String("client-id", "1278", "client identifier (required for filter)")
+		clientINN = flag.String("client-inn", "07128328", "client INN (taxpayer ID)")
 		insecureC = flag.Bool("insecure", false, "use plaintext gRPC (dev only)")
 		cancel    = flag.Bool("cancel", false, "cancel the order after submission")
 		market    = flag.Bool("market", false, "also submit a market order (priced by the book)")
+		tlsCert   = flag.String("tls-cert", "client.crt", "client certificate PEM for mTLS")
+		tlsKey    = flag.String("tls-key", "client.key", "client private key PEM for mTLS")
+		// Empty on purpose: the server certificate is publicly trusted (ACM),
+		// so the system roots verify it. ca-bundle.pem is the fx partner CA,
+		// which issued only our client certificate, not the server's.
+		tlsCA = flag.String("tls-ca", "", "CA bundle PEM to verify the server; empty = system roots")
+		mTLS  = flag.Bool("mTLS", true, "present the client certificate (-tls-cert/-tls-key)")
 	)
 	flag.Parse()
 
@@ -62,8 +79,8 @@ func main() {
 	}
 	defer pool.Close()
 
-	// Build SDK options. For production, pass real TLS credentials instead of
-	// grpc.WithTransportCredentials(insecure.NewCredentials()).
+	// Build SDK options. For production, use TLS (mTLS when -tls-cert/-tls-key
+	// are set) instead of grpc.WithTransportCredentials(insecure.NewCredentials()).
 	opts := []v1.Option{
 		v1.WithMaxRetries(3),
 		v1.WithRetryBackoff(100*time.Millisecond, 5*time.Second),
@@ -72,6 +89,15 @@ func main() {
 	if *insecureC {
 		opts = append(opts, v1.WithDialOptions(
 			grpc.WithTransportCredentials(insecure.NewCredentials()),
+		))
+	} else if *mTLS {
+
+		tlsCfg, err := loadTLSConfig(*tlsCert, *tlsKey, *tlsCA)
+		if err != nil {
+			log.Fatalf("tls: %v", err)
+		}
+		opts = append(opts, v1.WithDialOptions(
+			grpc.WithTransportCredentials(credentials.NewTLS(tlsCfg)),
 		))
 	} else {
 		opts = append(opts, v1.WithDialOptions(
@@ -220,8 +246,8 @@ func main() {
 	segment := v1.Retail
 	var acc = make(map[string]string)
 	// account details
-	acc["debit_account"] = "1276"
-	acc["credit_account"] = "4576"
+	acc["debit_account"] = "1278"
+	acc["credit_account"] = "4578"
 	var fee = make(map[string]string)
 	// fixed fee in percentage
 	fee["fixed"] = "0.05"
@@ -229,7 +255,7 @@ func main() {
 	// 1. Submit a small USD/TJS buy limit order at 9.31. OrderType is left unset,
 	// which the SDK treats as v1.LimitOrder.
 	submitted, err := client.SubmitOrder(ctx, &v1.SubmitOrderParams{
-		Side:             v1.Buy,
+		Side:             v1.Sell,
 		Segment:          segment,
 		AllowPartialFill: true,
 		PartnerId:        *partnerId,
@@ -341,6 +367,37 @@ func main() {
 	if err := g.Wait(); err != nil {
 		log.Fatalln("shutdown:", err)
 	}
+}
+
+// loadTLSConfig builds the client TLS config. certFile and keyFile, when both
+// set, enable mTLS; caFile, when set, replaces the system roots for verifying
+// the server.
+func loadTLSConfig(certFile, keyFile, caFile string) (*tls.Config, error) {
+	cfg := &tls.Config{MinVersion: tls.VersionTLS12}
+
+	switch {
+	case certFile != "" && keyFile != "":
+		cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+		if err != nil {
+			return nil, fmt.Errorf("load client cert: %w", err)
+		}
+		cfg.Certificates = []tls.Certificate{cert}
+	case certFile != "" || keyFile != "":
+		return nil, errors.New("-tls-cert and -tls-key must be set together")
+	}
+
+	if caFile != "" {
+		pem, err := os.ReadFile(caFile)
+		if err != nil {
+			return nil, fmt.Errorf("read CA: %w", err)
+		}
+		pool := x509.NewCertPool()
+		if !pool.AppendCertsFromPEM(pem) {
+			return nil, fmt.Errorf("no certificates found in %s", caFile)
+		}
+		cfg.RootCAs = pool
+	}
+	return cfg, nil
 }
 
 func handleTrade(ctx context.Context, ev *v1.TradeEvent) error {
