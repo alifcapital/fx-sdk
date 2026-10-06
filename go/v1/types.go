@@ -92,6 +92,20 @@ const (
 	MarketOrder OrderType = 2
 )
 
+// TradeType says who stood on the two sides of a trade, as reported by the Core.
+// The zero value means the Core did not report it (a trade stored before the
+// field existed, or an older Core).
+type TradeType int32
+
+const (
+	// SamePartner: one partner on both sides, no treasury (Retail ↔ Retail).
+	SamePartner TradeType = 1
+	// SamePartnerTreasury: one partner on both sides, one of them Treasury.
+	SamePartnerTreasury TradeType = 2
+	// CrossPartner: different partners on the two sides, any segments.
+	CrossPartner TradeType = 3
+)
+
 // SubmitOrderParams contains the parameters for submitting a new order.
 // The SDK derives ref_id and order_day automatically from the local DB insert.
 type SubmitOrderParams struct {
@@ -261,6 +275,7 @@ type TradeEvent struct {
 	ClientId       string
 	CurrencyPair   string
 	Side           Side
+	TradeType      TradeType
 	Account        map[string]string // account JSONB stored on the parent order
 	FeeConfig      map[string]string // fee JSONB stored on the parent order
 	Settlement     udecimal.Decimal  // (filled_quantity * execution_rate)+-Fee
@@ -395,6 +410,7 @@ type Trade struct {
 	ExecutionRate  string
 	ExecutedAt     string
 	PartnerId      string
+	TradeType      TradeType
 }
 
 // LocalTrade is a client_trades row as stored by the partner, including the
@@ -408,10 +424,11 @@ type LocalTrade struct {
 	FilledQuantity string
 	ExecutionRate  string
 	ExecutedAt     string
-	Ack            bool   // the trade was acked to the Core (received & stored)
-	Settled        bool   // partner-side settlement completed; does not affect the checksum
-	SettleAttempts int16  // settlement handler attempts so far
-	SettleError    string // last settlement error, empty once settled
+	TradeType      TradeType // zero for a row stored before trade_type was recorded
+	Ack            bool      // the trade was acked to the Core (received & stored)
+	Settled        bool      // partner-side settlement completed; does not affect the checksum
+	SettleAttempts int16     // settlement handler attempts so far
+	SettleError    string    // last settlement error, empty once settled
 }
 
 // TradeMismatch is a trade both sides have under the same (trade_id, order_id)

@@ -390,7 +390,7 @@ func (c *Client) localTrades(ctx context.Context, p *ReconcileParams) (map[trade
 	// caller sees rather than with whatever the session timezone happens to be.
 	rows, err := c.db.Query(ctx,
 		`SELECT trade_id, order_id, ref_id, side, filled_quantity::text, execution_rate::text,
-		        to_char(executed_at `+atTZ+`, 'YYYY-MM-DD HH24:MI:SS'), ack, settled, settle_attempts,
+		        to_char(executed_at `+atTZ+`, 'YYYY-MM-DD HH24:MI:SS'), trade_type, ack, settled, settle_attempts,
 		        COALESCE(settle_error, '')
 		   FROM client_trades
 		  WHERE trading_day = $1::date
@@ -406,7 +406,7 @@ func (c *Client) localTrades(ctx context.Context, p *ReconcileParams) (map[trade
 	for rows.Next() {
 		var lt LocalTrade
 		if err := rows.Scan(&lt.TradeId, &lt.OrderId, &lt.RefId, &lt.Side, &lt.FilledQuantity,
-			&lt.ExecutionRate, &lt.ExecutedAt, &lt.Ack, &lt.Settled, &lt.SettleAttempts,
+			&lt.ExecutionRate, &lt.ExecutedAt, &lt.TradeType, &lt.Ack, &lt.Settled, &lt.SettleAttempts,
 			&lt.SettleError); err != nil {
 			return nil, fmt.Errorf("fx-sdk: scan local trade: %w", err)
 		}
@@ -435,6 +435,11 @@ func compareTrade(core Trade, local LocalTrade) []string {
 	}
 	if !sameDecimal(core.ExecutionRate, local.ExecutionRate) {
 		fields = append(fields, "execution_rate")
+	}
+	// Zero on either side means "not reported" (a row stored before the column
+	// existed, or an older Core), which is not a disagreement.
+	if core.TradeType != 0 && local.TradeType != 0 && core.TradeType != local.TradeType {
+		fields = append(fields, "trade_type")
 	}
 	return fields
 }

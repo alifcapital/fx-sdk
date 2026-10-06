@@ -44,23 +44,23 @@ import (
 
 func main() {
 	var (
-		target    = flag.String("target", "test:443", "FX Core gRPC address")
-		sdkId     = flag.String("sdk-id", "01ssdfae7-faff-7212-abed-9sdfsdff", "SDK identifier")
-		apiKey    = flag.String("api-key", "p8sdfsdft+usdfu7YEVEwDw==", "API key")
+		target    = flag.String("target", "dev-fx-api.alif.tj:443", "FX Core gRPC address")
+		sdkId     = flag.String("sdk-id", "0sdfaabe", "SDK identifier")
+		apiKey    = flag.String("api-key", "e8TkgsfHNAGIHGvftKFcGjPETqKN1BQ==", "API key")
 		dsn       = flag.String("dsn", "postgres://postgres:pass123@192.168.215.2:5432/fxdb?sslmode=disable", "Postgres DSN for the local orders table")
-		partnerId = flag.String("partner-id", "01a0sdf9-c09b-7a8d-9784-3csdfa1ce", "partner identifier")
+		partnerId = flag.String("partner-id", "0sdf95eb5", "partner identifier")
 		clientId  = flag.String("client-id", "1278", "client identifier (required for filter)")
 		clientINN = flag.String("client-inn", "07128328", "client INN (taxpayer ID)")
 		insecureC = flag.Bool("insecure", false, "use plaintext gRPC (dev only)")
 		cancel    = flag.Bool("cancel", false, "cancel the order after submission")
 		market    = flag.Bool("market", false, "also submit a market order (priced by the book)")
-		tlsCert   = flag.String("tls-cert", "client.crt", "client certificate PEM for mTLS")
-		tlsKey    = flag.String("tls-key", "client.key", "client private key PEM for mTLS")
+		tlsCert   = flag.String("tls-cert", "test-c.crt", "client certificate PEM for mTLS")
+		tlsKey    = flag.String("tls-key", "test-c.key", "client private key PEM for mTLS")
 		// Empty on purpose: the server certificate is publicly trusted (ACM),
 		// so the system roots verify it. ca-bundle.pem is the fx partner CA,
 		// which issued only our client certificate, not the server's.
 		tlsCA = flag.String("tls-ca", "", "CA bundle PEM to verify the server; empty = system roots")
-		mTLS  = flag.Bool("mTLS", true, "present the client certificate (-tls-cert/-tls-key)")
+		mTLS  = flag.Bool("mTLS", false, "present the client certificate (-tls-cert/-tls-key)")
 	)
 	flag.Parse()
 
@@ -401,9 +401,9 @@ func loadTLSConfig(certFile, keyFile, caFile string) (*tls.Config, error) {
 }
 
 func handleTrade(ctx context.Context, ev *v1.TradeEvent) error {
-	log.Printf("TRADE: id=%d order=%d side=%d order_status=%d  day=%s filled=%s rate=%s settlement=%s fee=%s side=%d pair=%s",
+	log.Printf("TRADE: id=%d order=%d side=%d order_status=%d  day=%s filled=%s rate=%s settlement=%s fee=%s side=%d pair=%s trade_type=%d",
 		ev.TradeId, ev.OrderId, ev.Side, ev.OrderStatus, ev.TradingDay, ev.FilledQuantity, ev.ExecutionRate,
-		ev.Settlement, ev.Fee, ev.Side, ev.CurrencyPair)
+		ev.Settlement, ev.Fee, ev.Side, ev.CurrencyPair, ev.TradeType)
 	log.Printf("  accounts: debit=%s credit=%s -> move %s %s (fee %s)",
 		ev.Account["debit_account"], ev.Account["credit_account"], ev.Settlement, ev.CurrencyPair, ev.Fee)
 	return nil

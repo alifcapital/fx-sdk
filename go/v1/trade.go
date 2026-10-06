@@ -168,7 +168,7 @@ func (c *Client) RetryUnsettled(ctx context.Context, handler TradeEventHandler) 
 
 	rows, err := c.db.Query(ctx,
 		`SELECT to_char(trading_day, 'YYYY-MM-DD'), trade_id, order_id, ref_id,
-		        filled_quantity::text, execution_rate::text, partner_id, client_id
+		        filled_quantity::text, execution_rate::text, partner_id, client_id, trade_type
 		   FROM client_trades
 		  WHERE settled = FALSE
 		  ORDER BY trading_day`)
@@ -189,7 +189,7 @@ func (c *Client) RetryUnsettled(ctx context.Context, handler TradeEventHandler) 
 		ev := &TradeEvent{}
 		var refId int64
 		if err := rows.Scan(&ev.TradingDay, &ev.TradeId, &ev.OrderId, &refId,
-			&ev.FilledQuantity, &ev.ExecutionRate, &ev.PartnerId, &ev.ClientId); err != nil {
+			&ev.FilledQuantity, &ev.ExecutionRate, &ev.PartnerId, &ev.ClientId, &ev.TradeType); err != nil {
 			rows.Close()
 			return fmt.Errorf("fx-sdk: scan unsettled trade: %w", err)
 		}
@@ -239,6 +239,7 @@ func (c *Client) persistTrade(ctx context.Context, resp *forexv1.TradeResponse) 
 		FilledQuantity: resp.GetFilledQuantity(),
 		ExecutionRate:  resp.GetExecutionRate(),
 		ExecutedAt:     resp.GetExecutedAt(),
+		TradeType:      TradeType(resp.GetTradeType()),
 	}
 
 	if err := c.db.QueryRow(ctx,
@@ -278,11 +279,11 @@ func (c *Client) persistTrade(ctx context.Context, resp *forexv1.TradeResponse) 
 
 	cmd, err := tx.Exec(ctx,
 		`INSERT INTO client_trades (executed_at, trading_day, trade_id, order_id, ref_id, side, filled_quantity,
-		                            execution_rate, settlement, fee, partner_id, client_id)
-		 VALUES (COALESCE($1, NOW()), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+		                            execution_rate, settlement, fee, partner_id, client_id, trade_type)
+		 VALUES (COALESCE($1, NOW()), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 		 ON CONFLICT (trade_id, order_id, trading_day) DO NOTHING;`,
 		executedAt, event.TradingDay, event.TradeId, event.OrderId, resp.GetRefId(), event.Side, event.FilledQuantity, event.ExecutionRate,
-		event.Settlement, event.Fee, event.PartnerId, event.ClientId)
+		event.Settlement, event.Fee, event.PartnerId, event.ClientId, event.TradeType)
 	if err != nil {
 		return nil, false, false, fmt.Errorf("insert trade: %w", err)
 	}
@@ -409,6 +410,7 @@ func toTrades(raw []*forexv1.TradeResponse) []Trade {
 			ExecutionRate:  t.GetExecutionRate(),
 			ExecutedAt:     t.GetExecutedAt(),
 			PartnerId:      t.GetPartnerId(),
+			TradeType:      TradeType(t.GetTradeType()),
 		})
 	}
 	return trades

@@ -34,6 +34,7 @@ type TradeResponse struct {
 	ExecutionRate  *string                `protobuf:"bytes,9,opt,name=execution_rate,json=executionRate" json:"execution_rate,omitempty"`
 	ExecutedAt     *string                `protobuf:"bytes,10,opt,name=executed_at,json=executedAt" json:"executed_at,omitempty"`
 	PartnerId      *string                `protobuf:"bytes,11,opt,name=partner_id,json=partnerId" json:"partner_id,omitempty"`
+	TradeType      *int32                 `protobuf:"varint,12,opt,name=trade_type,json=tradeType" json:"trade_type,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -143,6 +144,13 @@ func (x *TradeResponse) GetPartnerId() string {
 		return *x.PartnerId
 	}
 	return ""
+}
+
+func (x *TradeResponse) GetTradeType() int32 {
+	if x != nil && x.TradeType != nil {
+		return *x.TradeType
+	}
+	return 0
 }
 
 type TradeRequest struct {
@@ -477,7 +485,7 @@ var File_forex_v1_trade_proto protoreflect.FileDescriptor
 
 const file_forex_v1_trade_proto_rawDesc = "" +
 	"\n" +
-	"\x14forex/v1/trade.proto\x12\bforex.v1\"\xd6\x02\n" +
+	"\x14forex/v1/trade.proto\x12\bforex.v1\"\xf5\x02\n" +
 	"\rTradeResponse\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x15\n" +
 	"\x06ref_id\x18\x02 \x01(\x03R\x05refId\x12\x19\n" +
@@ -493,7 +501,9 @@ const file_forex_v1_trade_proto_rawDesc = "" +
 	" \x01(\tR\n" +
 	"executedAt\x12\x1d\n" +
 	"\n" +
-	"partner_id\x18\v \x01(\tR\tpartnerId\"}\n" +
+	"partner_id\x18\v \x01(\tR\tpartnerId\x12\x1d\n" +
+	"\n" +
+	"trade_type\x18\f \x01(\x05R\ttradeType\"}\n" +
 	"\fTradeRequest\x12\x12\n" +
 	"\x04side\x18\x01 \x01(\x05R\x04side\x12\x19\n" +
 	"\btrade_id\x18\x02 \x01(\x03R\atradeId\x12\x1f\n" +

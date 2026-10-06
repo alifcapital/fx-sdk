@@ -63,6 +63,7 @@ CREATE TABLE client_trades (
     order_id              BIGINT NOT NULL, -- core order id
     ref_id                BIGINT NOT NULL, -- client_orders ref_id
     side                  SMALLINT NOT NULL,
+    trade_type            SMALLINT NOT NULL DEFAULT 0,      -- 1 same partner, 2 same partner + Treasury, 3 cross-partner; 0 not reported
     settle_attempts       SMALLINT NOT NULL DEFAULT 0,      -- number of settlement handler attempts
     filled_quantity       NUMERIC(28,6) NOT NULL,
     execution_rate        NUMERIC(28,6) NOT NULL,
