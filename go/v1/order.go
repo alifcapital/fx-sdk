@@ -60,10 +60,12 @@ func (c *Client) SubmitOrder(ctx context.Context, p *SubmitOrderParams) (*Submit
 		return nil, ErrTreasuryCounterpartyOnly
 	}
 
-	// min_trade_quantity is optional; an empty string is not a decimal, so it
-	// goes to the DB as NULL.
+	// min_trade_quantity is optional: unset, the Core applies the currency
+	// pair's minimum. An empty string is not a decimal, so it goes to the DB as
+	// NULL. A market order is not rested in the book, so the field has no
+	// meaning there and is dropped like limit_rate.
 	var minTradeQuantity *string
-	if p.MinTradeQuantity != "" {
+	if p.MinTradeQuantity != "" && orderType != MarketOrder {
 		minTradeQuantity = &p.MinTradeQuantity
 	}
 
@@ -124,14 +126,13 @@ func (c *Client) SubmitOrder(ctx context.Context, p *SubmitOrderParams) (*Submit
 	)
 	err = c.db.QueryRow(ctx,
 		`INSERT INTO client_orders (side, segment, quantity, limit_rate, remaining_quantity,
-		                            min_trade_quantity, allow_partial_fill, currency_pair, partner_id,
+		                            min_trade_quantity, currency_pair, partner_id,
 		                            client_id, client_inn, account, fee, order_type, counterparty_segment)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
 		 RETURNING ref_id, to_char(order_day, 'YYYY-MM-DD');`,
 		p.Side, p.Segment,
 		p.Quantity, limitRate, p.Quantity, // remaining_quantity starts equal to quantity
 		minTradeQuantity,
-		p.AllowPartialFill,
 		p.CurrencyPair, p.PartnerId, p.ClientId, p.ClientINN,
 		p.Account, p.Fee,
 		orderType, p.CounterpartySegment,
@@ -145,7 +146,6 @@ func (c *Client) SubmitOrder(ctx context.Context, p *SubmitOrderParams) (*Submit
 	req := &forexv1.SubmitOrderRequest{
 		Side:                new(int32(p.Side)),
 		Segment:             new(int32(p.Segment)),
-		AllowPartialFill:    new(p.AllowPartialFill),
 		ClientId:            &p.ClientId,
 		ClientInn:           &p.ClientINN,
 		CurrencyPair:        &p.CurrencyPair,
@@ -307,7 +307,6 @@ func (c *Client) FilterClientOrders(ctx context.Context, p *FilterClientOrdersPa
 			Side:              Side(o.GetSide()),
 			Segment:           Segment(o.GetSegment()),
 			Status:            OrderStatus(o.GetStatus()),
-			AllowPartialFill:  o.GetAllowPartialFill(),
 			CurrencyPair:      o.GetCurrencyPair(),
 			Quantity:          o.GetQuantity(),
 			LimitRate:         o.GetLimitRate(),

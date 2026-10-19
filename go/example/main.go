@@ -257,7 +257,6 @@ func main() {
 	submitted, err := client.SubmitOrder(ctx, &v1.SubmitOrderParams{
 		Side:             v1.Sell,
 		Segment:          segment,
-		AllowPartialFill: true,
 		PartnerId:        *partnerId,
 		ClientId:         *clientId,
 		ClientINN:        *clientINN,
@@ -285,17 +284,16 @@ func main() {
 	// individual trades still arrive on the trade subscription.
 	if *market {
 		mkt, err := client.SubmitOrder(ctx, &v1.SubmitOrderParams{
-			Side:             v1.Sell,
-			Segment:          segment,
-			AllowPartialFill: true,
-			PartnerId:        *partnerId,
-			ClientId:         *clientId,
-			ClientINN:        *clientINN,
-			CurrencyPair:     "USD/TJS",
-			Quantity:         "30000.00",
-			OrderType:        v1.MarketOrder,
-			Account:          acc,
-			Fee:              fee,
+			Side:         v1.Sell,
+			Segment:      segment,
+			PartnerId:    *partnerId,
+			ClientId:     *clientId,
+			ClientINN:    *clientINN,
+			CurrencyPair: "USD/TJS",
+			Quantity:     "30000.00",
+			OrderType:    v1.MarketOrder,
+			Account:      acc,
+			Fee:          fee,
 		})
 		switch {
 		case err == v1.ErrDuplicateOrder:

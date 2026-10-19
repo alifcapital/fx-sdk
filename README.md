@@ -416,14 +416,13 @@ fee := map[string]string{
 res, err := client.SubmitOrder(ctx, &v1.SubmitOrderParams{
     Side:             v1.Buy,        // Buy или Sell
     Segment:          v1.Retail,     // Retail / Corporate / Treasury
-    AllowPartialFill: true,
     PartnerId:        partnerId,
     ClientId:         "1271",
     ClientINN:        "07128321",    // ИНН клиента
     CurrencyPair:     "USD/TJS",
     Quantity:         "1000.00",     // десятичная строка
     LimitRate:        "9.31",        // десятичная строка (обязателен для лимитного ордера)
-    MinTradeQuantity: "100.00",      // мин. объём частичного исполнения
+    MinTradeQuantity: "100.00",      // мин. объём одной сделки; пусто — минимум валютной пары
     Account:          acc,           // произвольный JSONB
     Fee:              fee,           // произвольный JSONB
     OrderType:        v1.LimitOrder, // 0 или v1.LimitOrder — лимитный; v1.MarketOrder — рыночный
@@ -480,7 +479,6 @@ log.Printf("ref_id=%d order_day=%s status=%d cause=%q",
 res, err := client.SubmitOrder(ctx, &v1.SubmitOrderParams{
     Side:             v1.Buy,
     Segment:          v1.Retail,
-    AllowPartialFill: true,
     PartnerId:        partnerId,
     ClientId:         "1271",
     ClientINN:        "07128321",

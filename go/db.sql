@@ -27,8 +27,7 @@ CREATE TABLE client_orders (
     quantity                NUMERIC(28,6) NOT NULL,
     limit_rate              NUMERIC(28,6),                -- NULL for market orders (priced by the book)
     remaining_quantity      NUMERIC(28,6) NOT NULL,
-    min_trade_quantity      NUMERIC(28,6),
-    allow_partial_fill      BOOLEAN NOT NULL,
+    min_trade_quantity      NUMERIC(28,6),                -- NULL = the currency pair's minimum
     currency_pair           TEXT NOT NULL,
     partner_id              TEXT NOT NULL,
     client_id               TEXT NOT NULL,           -- client's id

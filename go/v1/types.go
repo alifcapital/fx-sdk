@@ -109,18 +109,20 @@ const (
 // SubmitOrderParams contains the parameters for submitting a new order.
 // The SDK derives ref_id and order_day automatically from the local DB insert.
 type SubmitOrderParams struct {
-	Side             Side
-	Segment          Segment
-	AllowPartialFill bool
-	PartnerId        string
-	ClientId         string
-	ClientINN        string
-	CurrencyPair     string
-	Quantity         string // decimal string, e.g. "1000.00"
-	LimitRate        string // decimal string, e.g. "10.8500"; required for LimitOrder, ignored for MarketOrder
-	MinTradeQuantity string // optional; relevant when AllowPartialFill is true
-	Account          any    // optional JSONB
-	Fee              any    // optional JSONB
+	Side         Side
+	Segment      Segment
+	PartnerId    string
+	ClientId     string
+	ClientINN    string
+	CurrencyPair string
+	Quantity     string // decimal string, e.g. "1000.00"
+	LimitRate    string // decimal string, e.g. "10.8500"; required for LimitOrder, ignored for MarketOrder
+	// MinTradeQuantity is the smallest quantity one trade may take from a limit
+	// order (decimal string). Empty means the currency pair's MinTradeQuantity;
+	// a smaller value is rejected by the Core. Ignored for MarketOrder.
+	MinTradeQuantity string
+	Account          any // optional JSONB
+	Fee              any // optional JSONB
 	// OrderType selects limit or market execution. Zero means LimitOrder.
 	OrderType OrderType
 	// CounterpartySegment restricts which counterparties the order may match.
@@ -186,7 +188,6 @@ type Order struct {
 	Side              Side
 	Segment           Segment
 	Status            OrderStatus
-	AllowPartialFill  bool
 	CurrencyPair      string
 	Quantity          string
 	LimitRate         string

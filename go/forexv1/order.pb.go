@@ -22,28 +22,30 @@ const (
 )
 
 type SubmitOrderRequest struct {
-	state            protoimpl.MessageState `protogen:"open.v1"`
-	RefId            *int64                 `protobuf:"varint,1,opt,name=ref_id,json=refId" json:"ref_id,omitempty"` // partner's reference id, prevents duplicate orders on retry
-	Side             *int32                 `protobuf:"varint,2,opt,name=side" json:"side,omitempty"`                // 1 = buy, 2 = sell
-	Segment          *int32                 `protobuf:"varint,3,opt,name=segment" json:"segment,omitempty"`          // 1 = Retail, 2 = Corporate, 3 = Treasury
-	AllowPartialFill *bool                  `protobuf:"varint,4,opt,name=allow_partial_fill,json=allowPartialFill" json:"allow_partial_fill,omitempty"`
-	ClientId         *string                `protobuf:"bytes,5,opt,name=client_id,json=clientId" json:"client_id,omitempty"`             // client's unique identifier
-	ClientInn        *string                `protobuf:"bytes,6,opt,name=client_inn,json=clientInn" json:"client_inn,omitempty"`          // client's INN (taxpayer identification number)
-	CurrencyPair     *string                `protobuf:"bytes,7,opt,name=currency_pair,json=currencyPair" json:"currency_pair,omitempty"` // e.g. "USD/TJS"
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	RefId        *int64                 `protobuf:"varint,1,opt,name=ref_id,json=refId" json:"ref_id,omitempty"`                     // partner's reference id, prevents duplicate orders on retry
+	Side         *int32                 `protobuf:"varint,2,opt,name=side" json:"side,omitempty"`                                    // 1 = buy, 2 = sell
+	Segment      *int32                 `protobuf:"varint,3,opt,name=segment" json:"segment,omitempty"`                              // 1 = Retail, 2 = Corporate, 3 = Treasury
+	ClientId     *string                `protobuf:"bytes,4,opt,name=client_id,json=clientId" json:"client_id,omitempty"`             // client's unique identifier
+	ClientInn    *string                `protobuf:"bytes,5,opt,name=client_inn,json=clientInn" json:"client_inn,omitempty"`          // client's INN (taxpayer identification number)
+	CurrencyPair *string                `protobuf:"bytes,6,opt,name=currency_pair,json=currencyPair" json:"currency_pair,omitempty"` // e.g. "USD/TJS"
 	// Every decimal string below carries at most 6 decimal places, which is what
 	// the engine stores. A finer value is rejected rather than rounded: the amount
 	// a partner reserved funds for has to be the amount that trades. Trailing
 	// zeros do not count as precision, so "1000.1000000" is accepted.
-	Quantity            *string `protobuf:"bytes,8,opt,name=quantity" json:"quantity,omitempty"`                                            // quantity is in the Base currency (the first currency in the pair)
-	LimitRate           *string `protobuf:"bytes,9,opt,name=limit_rate,json=limitRate" json:"limit_rate,omitempty"`                         // client's rate, positive decimal string
-	OrderDay            *string `protobuf:"bytes,10,opt,name=order_day,json=orderDay" json:"order_day,omitempty"`                           // order day 'YYYY-MM-DD'
-	MinTradeQuantity    *string `protobuf:"bytes,11,opt,name=min_trade_quantity,json=minTradeQuantity" json:"min_trade_quantity,omitempty"` // minimum trade quantity if allow_partial_fill is true, decimal string
-	PartnerId           *string `protobuf:"bytes,12,opt,name=partner_id,json=partnerId" json:"partner_id,omitempty"`
-	CounterpartySegment *int32  `protobuf:"varint,13,opt,name=counterparty_segment,json=counterpartySegment" json:"counterparty_segment,omitempty"` // 0 = any counterparty; only a treasury order may set 3 = treasury only
+	Quantity  *string `protobuf:"bytes,7,opt,name=quantity" json:"quantity,omitempty"`                    // quantity is in the Base currency (the first currency in the pair)
+	LimitRate *string `protobuf:"bytes,8,opt,name=limit_rate,json=limitRate" json:"limit_rate,omitempty"` // client's rate, positive decimal string
+	OrderDay  *string `protobuf:"bytes,9,opt,name=order_day,json=orderDay" json:"order_day,omitempty"`    // order day 'YYYY-MM-DD'
+	// Smallest quantity one trade may take from this limit order, decimal string.
+	// Unset or 0 means the currency pair's minimum; a smaller value is rejected.
+	// Ignored for a market order.
+	MinTradeQuantity    *string `protobuf:"bytes,10,opt,name=min_trade_quantity,json=minTradeQuantity" json:"min_trade_quantity,omitempty"`
+	PartnerId           *string `protobuf:"bytes,11,opt,name=partner_id,json=partnerId" json:"partner_id,omitempty"`
+	CounterpartySegment *int32  `protobuf:"varint,12,opt,name=counterparty_segment,json=counterpartySegment" json:"counterparty_segment,omitempty"` // 0 = any counterparty; only a treasury order may set 3 = treasury only
 	// 1 = limit (default when unset), 2 = market. A market order ignores
 	// limit_rate, executes against the best available prices, and its unfilled
 	// remainder is cancelled instead of resting in the book.
-	OrderType     *int32 `protobuf:"varint,14,opt,name=order_type,json=orderType" json:"order_type,omitempty"`
+	OrderType     *int32 `protobuf:"varint,13,opt,name=order_type,json=orderType" json:"order_type,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -97,13 +99,6 @@ func (x *SubmitOrderRequest) GetSegment() int32 {
 		return *x.Segment
 	}
 	return 0
-}
-
-func (x *SubmitOrderRequest) GetAllowPartialFill() bool {
-	if x != nil && x.AllowPartialFill != nil {
-		return *x.AllowPartialFill
-	}
-	return false
 }
 
 func (x *SubmitOrderRequest) GetClientId() string {
@@ -555,24 +550,23 @@ func (x *FilterClientOrdersResponse) GetOrders() []*OrderInfo {
 }
 
 type OrderInfo struct {
-	state            protoimpl.MessageState `protogen:"open.v1"`
-	OrderId          *int64                 `protobuf:"varint,1,opt,name=order_id,json=orderId" json:"order_id,omitempty"`
-	RefId            *int64                 `protobuf:"varint,2,opt,name=ref_id,json=refId" json:"ref_id,omitempty"`
-	Side             *int32                 `protobuf:"varint,3,opt,name=side" json:"side,omitempty"`
-	Segment          *int32                 `protobuf:"varint,4,opt,name=segment" json:"segment,omitempty"`
-	Status           *int32                 `protobuf:"varint,5,opt,name=status" json:"status,omitempty"`
-	AllowPartialFill *bool                  `protobuf:"varint,6,opt,name=allow_partial_fill,json=allowPartialFill" json:"allow_partial_fill,omitempty"`
-	CurrencyPair     *string                `protobuf:"bytes,7,opt,name=currency_pair,json=currencyPair" json:"currency_pair,omitempty"`
-	Quantity         *string                `protobuf:"bytes,8,opt,name=quantity" json:"quantity,omitempty"`
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	OrderId      *int64                 `protobuf:"varint,1,opt,name=order_id,json=orderId" json:"order_id,omitempty"`
+	RefId        *int64                 `protobuf:"varint,2,opt,name=ref_id,json=refId" json:"ref_id,omitempty"`
+	Side         *int32                 `protobuf:"varint,3,opt,name=side" json:"side,omitempty"`
+	Segment      *int32                 `protobuf:"varint,4,opt,name=segment" json:"segment,omitempty"`
+	Status       *int32                 `protobuf:"varint,5,opt,name=status" json:"status,omitempty"`
+	CurrencyPair *string                `protobuf:"bytes,6,opt,name=currency_pair,json=currencyPair" json:"currency_pair,omitempty"`
+	Quantity     *string                `protobuf:"bytes,7,opt,name=quantity" json:"quantity,omitempty"`
 	// Unset for a market order: it carries no client rate, and the engine's
 	// internal slippage bound is not reported as one.
-	LimitRate           *string `protobuf:"bytes,9,opt,name=limit_rate,json=limitRate" json:"limit_rate,omitempty"`
-	MinTradeQuantity    *string `protobuf:"bytes,10,opt,name=min_trade_quantity,json=minTradeQuantity" json:"min_trade_quantity,omitempty"`
-	RemainingQuantity   *string `protobuf:"bytes,11,opt,name=remaining_quantity,json=remainingQuantity" json:"remaining_quantity,omitempty"`
-	CreatedAt           *string `protobuf:"bytes,12,opt,name=created_at,json=createdAt" json:"created_at,omitempty"`
-	OrderDay            *string `protobuf:"bytes,13,opt,name=order_day,json=orderDay" json:"order_day,omitempty"`
-	CounterpartySegment *int32  `protobuf:"varint,14,opt,name=counterparty_segment,json=counterpartySegment" json:"counterparty_segment,omitempty"` // 0 = any counterparty; 3 = treasury only
-	OrderType           *int32  `protobuf:"varint,15,opt,name=order_type,json=orderType" json:"order_type,omitempty"`                               // 1 = limit, 2 = market
+	LimitRate           *string `protobuf:"bytes,8,opt,name=limit_rate,json=limitRate" json:"limit_rate,omitempty"`
+	MinTradeQuantity    *string `protobuf:"bytes,9,opt,name=min_trade_quantity,json=minTradeQuantity" json:"min_trade_quantity,omitempty"`
+	RemainingQuantity   *string `protobuf:"bytes,10,opt,name=remaining_quantity,json=remainingQuantity" json:"remaining_quantity,omitempty"`
+	CreatedAt           *string `protobuf:"bytes,11,opt,name=created_at,json=createdAt" json:"created_at,omitempty"`
+	OrderDay            *string `protobuf:"bytes,12,opt,name=order_day,json=orderDay" json:"order_day,omitempty"`
+	CounterpartySegment *int32  `protobuf:"varint,13,opt,name=counterparty_segment,json=counterpartySegment" json:"counterparty_segment,omitempty"` // 0 = any counterparty; 3 = treasury only
+	OrderType           *int32  `protobuf:"varint,14,opt,name=order_type,json=orderType" json:"order_type,omitempty"`                               // 1 = limit, 2 = market
 	unknownFields       protoimpl.UnknownFields
 	sizeCache           protoimpl.SizeCache
 }
@@ -640,13 +634,6 @@ func (x *OrderInfo) GetStatus() int32 {
 		return *x.Status
 	}
 	return 0
-}
-
-func (x *OrderInfo) GetAllowPartialFill() bool {
-	if x != nil && x.AllowPartialFill != nil {
-		return *x.AllowPartialFill
-	}
-	return false
 }
 
 func (x *OrderInfo) GetCurrencyPair() string {
@@ -1024,27 +1011,26 @@ var File_forex_v1_order_proto protoreflect.FileDescriptor
 
 const file_forex_v1_order_proto_rawDesc = "" +
 	"\n" +
-	"\x14forex/v1/order.proto\x12\bforex.v1\"\xdf\x03\n" +
+	"\x14forex/v1/order.proto\x12\bforex.v1\"\xb1\x03\n" +
 	"\x12SubmitOrderRequest\x12\x15\n" +
 	"\x06ref_id\x18\x01 \x01(\x03R\x05refId\x12\x12\n" +
 	"\x04side\x18\x02 \x01(\x05R\x04side\x12\x18\n" +
-	"\asegment\x18\x03 \x01(\x05R\asegment\x12,\n" +
-	"\x12allow_partial_fill\x18\x04 \x01(\bR\x10allowPartialFill\x12\x1b\n" +
-	"\tclient_id\x18\x05 \x01(\tR\bclientId\x12\x1d\n" +
+	"\asegment\x18\x03 \x01(\x05R\asegment\x12\x1b\n" +
+	"\tclient_id\x18\x04 \x01(\tR\bclientId\x12\x1d\n" +
 	"\n" +
-	"client_inn\x18\x06 \x01(\tR\tclientInn\x12#\n" +
-	"\rcurrency_pair\x18\a \x01(\tR\fcurrencyPair\x12\x1a\n" +
-	"\bquantity\x18\b \x01(\tR\bquantity\x12\x1d\n" +
+	"client_inn\x18\x05 \x01(\tR\tclientInn\x12#\n" +
+	"\rcurrency_pair\x18\x06 \x01(\tR\fcurrencyPair\x12\x1a\n" +
+	"\bquantity\x18\a \x01(\tR\bquantity\x12\x1d\n" +
 	"\n" +
-	"limit_rate\x18\t \x01(\tR\tlimitRate\x12\x1b\n" +
-	"\torder_day\x18\n" +
-	" \x01(\tR\borderDay\x12,\n" +
-	"\x12min_trade_quantity\x18\v \x01(\tR\x10minTradeQuantity\x12\x1d\n" +
+	"limit_rate\x18\b \x01(\tR\tlimitRate\x12\x1b\n" +
+	"\torder_day\x18\t \x01(\tR\borderDay\x12,\n" +
+	"\x12min_trade_quantity\x18\n" +
+	" \x01(\tR\x10minTradeQuantity\x12\x1d\n" +
 	"\n" +
-	"partner_id\x18\f \x01(\tR\tpartnerId\x121\n" +
-	"\x14counterparty_segment\x18\r \x01(\x05R\x13counterpartySegment\x12\x1d\n" +
+	"partner_id\x18\v \x01(\tR\tpartnerId\x121\n" +
+	"\x14counterparty_segment\x18\f \x01(\x05R\x13counterpartySegment\x12\x1d\n" +
 	"\n" +
-	"order_type\x18\x0e \x01(\x05R\torderType\"\x8f\x01\n" +
+	"order_type\x18\r \x01(\x05R\torderType\"\x8f\x01\n" +
 	"\x13SubmitOrderResponse\x12\x16\n" +
 	"\x06status\x18\x01 \x01(\x05R\x06status\x12\x14\n" +
 	"\x05cause\x18\x02 \x01(\tR\x05cause\x12'\n" +
@@ -1077,27 +1063,26 @@ const file_forex_v1_order_proto_rawDesc = "" +
 	"partner_id\x18\n" +
 	" \x01(\tR\tpartnerId\"I\n" +
 	"\x1aFilterClientOrdersResponse\x12+\n" +
-	"\x06orders\x18\x01 \x03(\v2\x13.forex.v1.OrderInfoR\x06orders\"\xfc\x03\n" +
+	"\x06orders\x18\x01 \x03(\v2\x13.forex.v1.OrderInfoR\x06orders\"\xce\x03\n" +
 	"\tOrderInfo\x12\x19\n" +
 	"\border_id\x18\x01 \x01(\x03R\aorderId\x12\x15\n" +
 	"\x06ref_id\x18\x02 \x01(\x03R\x05refId\x12\x12\n" +
 	"\x04side\x18\x03 \x01(\x05R\x04side\x12\x18\n" +
 	"\asegment\x18\x04 \x01(\x05R\asegment\x12\x16\n" +
-	"\x06status\x18\x05 \x01(\x05R\x06status\x12,\n" +
-	"\x12allow_partial_fill\x18\x06 \x01(\bR\x10allowPartialFill\x12#\n" +
-	"\rcurrency_pair\x18\a \x01(\tR\fcurrencyPair\x12\x1a\n" +
-	"\bquantity\x18\b \x01(\tR\bquantity\x12\x1d\n" +
+	"\x06status\x18\x05 \x01(\x05R\x06status\x12#\n" +
+	"\rcurrency_pair\x18\x06 \x01(\tR\fcurrencyPair\x12\x1a\n" +
+	"\bquantity\x18\a \x01(\tR\bquantity\x12\x1d\n" +
 	"\n" +
-	"limit_rate\x18\t \x01(\tR\tlimitRate\x12,\n" +
-	"\x12min_trade_quantity\x18\n" +
-	" \x01(\tR\x10minTradeQuantity\x12-\n" +
-	"\x12remaining_quantity\x18\v \x01(\tR\x11remainingQuantity\x12\x1d\n" +
+	"limit_rate\x18\b \x01(\tR\tlimitRate\x12,\n" +
+	"\x12min_trade_quantity\x18\t \x01(\tR\x10minTradeQuantity\x12-\n" +
+	"\x12remaining_quantity\x18\n" +
+	" \x01(\tR\x11remainingQuantity\x12\x1d\n" +
 	"\n" +
-	"created_at\x18\f \x01(\tR\tcreatedAt\x12\x1b\n" +
-	"\torder_day\x18\r \x01(\tR\borderDay\x121\n" +
-	"\x14counterparty_segment\x18\x0e \x01(\x05R\x13counterpartySegment\x12\x1d\n" +
+	"created_at\x18\v \x01(\tR\tcreatedAt\x12\x1b\n" +
+	"\torder_day\x18\f \x01(\tR\borderDay\x121\n" +
+	"\x14counterparty_segment\x18\r \x01(\x05R\x13counterpartySegment\x12\x1d\n" +
 	"\n" +
-	"order_type\x18\x0f \x01(\x05R\torderType\"\xb4\x01\n" +
+	"order_type\x18\x0e \x01(\x05R\torderType\"\xb4\x01\n" +
 	"\x18GetOrderBookDepthRequest\x12\x18\n" +
 	"\asegment\x18\x01 \x01(\x05R\asegment\x12\x1d\n" +
 	"\n" +
