@@ -99,12 +99,6 @@ SDK хранит ордера и сделки в **локальной БД па�
 psql "postgres://user:pass@host:5432/fxdb" -f go/db.sql
 ```
 
-Если таблица `client_trades` уже создана, добавьте колонку типа сделки:
-
-```sql
-ALTER TABLE client_trades ADD COLUMN trade_type SMALLINT NOT NULL DEFAULT 0;
-```
-
 > **Важно:** SDK выполняет SQL-запросы напрямую к этим таблицам. Имена и
 > структура колонок менять нельзя.
 
@@ -260,7 +254,7 @@ func newClient(ctx context.Context) (*v1.Client, error) {
 | `target` | Адрес gRPC-сервера Core | не пустой |
 | `sdkId` | Идентификатор SDK | строго 36 символов (UUID) |
 | `apiKey` | API-ключ партнёра | не пустой |
-| `partnerId` | Идентификатор партнёра |
+| `partnerId` | Идентификатор партнёра | не проверяется при создании; пустое значение отклонят вызовы |
 | `db` | Пул соединений `*pgxpool.Pool` | не `nil` |
 
 `sdkId`, `apiKey` и `partnerId` автоматически добавляются в gRPC-метаданные
@@ -523,15 +517,30 @@ res, err := client.SubmitOrder(ctx, &v1.SubmitOrderParams{
 
 ## Отмена ордера — CancelOrder
 
-Отменяет существующий ордер. Требует `OrderId` (это локальный `RefId` из
-`SubmitOrder`) и `OrderDay`.
+Отменяет существующий ордер. Требует `OrderId` и `OrderDay`.
+
+`OrderId` — это идентификатор ордера **в Core**, а не локальный `RefId`:
+`SubmitOrder` его не возвращает. Получить его можно из
+[`FilterClientOrders`](#фильтрация-ордеров--filterclientorders) (`Order.OrderId`)
+или из события сделки (`TradeEvent.OrderId`).
 
 ```go
+open, err := client.FilterClientOrders(ctx, &v1.FilterClientOrdersParams{
+    PartnerId: partnerId,
+    ClientId:  "1271",
+    Status:    v1.Pending,
+    Limit:     50,
+})
+if err != nil || len(open.Orders) == 0 {
+    log.Fatalf("нет открытых ордеров: %v", err)
+}
+target := open.Orders[0] // клиент выбирает, какой ордер отменить
+
 res, err := client.CancelOrder(ctx, &v1.CancelOrderParams{
     PartnerId: partnerId,
     ClientId:  "1271",
-    OrderId:   submitted.RefId,   // ref_id из SubmitOrder
-    OrderDay:  submitted.OrderDay,
+    OrderId:   target.OrderId, // order_id из Core
+    OrderDay:  target.OrderDay,
 })
 if err != nil {
     log.Fatalf("ошибка отмены: %v", err)
@@ -563,6 +572,7 @@ log.Printf("success=%v remaining=%s status=%d cause=%q",
 res, err := client.FilterClientOrders(ctx, &v1.FilterClientOrdersParams{
     PartnerId:    partnerId,
     ClientId:     "1271",          // обязательно
+    RefId:        0,               // опционально (0 = не задано)
     CurrencyPair: "USD/TJS",       // опционально
     Side:         v1.Buy,          // опционально (0 = не задано)
     Status:       v1.Pending,      // опционально (0 = не задано)
@@ -1194,6 +1204,10 @@ v1.CrossPartner        // 3 — разные партнёры, сегменты 
 | `v1.ErrInvalidOrderType` | `OrderType` не `LimitOrder` и не `MarketOrder` |
 | `v1.ErrInvalidCounterpartySegment` | `CounterpartySegment` не `AnyCounterparty` и не `Treasury` |
 | `v1.ErrTreasuryCounterpartyOnly` | `CounterpartySegment = Treasury` задан для не-казначейского ордера |
+| `v1.ErrDecimalPrecision` | В десятичном значении больше 6 знаков после запятой |
+| `v1.ErrInvalidDay` | День не в формате `YYYY-MM-DD` |
+| `v1.ErrInvalidHour` | Час вне диапазона `0..23` |
+| `v1.ErrInvalidRecoverRange` | Окно `RecoverTrades` перевёрнуто или шире 31 дня |
 
 ```go
 res, err := client.SubmitOrder(ctx, params)
@@ -1230,6 +1244,18 @@ cd go && go run ./example \
     -client-id=CLIENT_42 \
     -client-inn=123456789
 ```
+
+Дополнительные флаги:
+
+| Флаг | Назначение |
+|------|-----------|
+| `-insecure` | Незащищённое (plaintext) соединение — только для разработки |
+| `-mTLS` | Предъявить клиентский сертификат (`-tls-cert`, `-tls-key`) |
+| `-tls-ca` | CA для проверки сервера; пусто — системные корневые сертификаты |
+| `-market` | Дополнительно отправить рыночный ордер |
+| `-cancel` | Найти открытый ордер через `FilterClientOrders` и отменить его |
+
+Без `-insecure` и `-mTLS` используется обычный TLS без клиентского сертификата.
 
 Рекомендуемая структура продакшен-приложения (через `errgroup`):
 
