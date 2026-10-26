@@ -1,7 +1,7 @@
-// Example demonstrates how to use the fx-sdk v1 client to submit, cancel
-// and query orders against the FX Core via gRPC.
+// Example демонстрирует, как использовать клиент fx-sdk v1 для подачи, отмены
+// и запроса ордеров в FX Core через gRPC.
 //
-// Usage:
+// Использование:
 //
 //	go run ./example \
 //	    -target=fx-core.example.com:443 \
@@ -15,9 +15,9 @@
 //	    -tls-ca=ca.crt \
 //	    -market
 //
-// -tls-cert and -tls-key enable mTLS: the client presents that certificate to
-// the FX Core. -tls-ca verifies the server against a private CA instead of the
-// system roots; omit it when the server certificate is publicly trusted.
+// -tls-cert и -tls-key включают mTLS: клиент предъявляет этот сертификат
+// FX Core. -tls-ca проверяет сервер по приватному CA вместо системных корневых
+// сертификатов; опустите его, если сертификат сервера публично доверенный.
 package main
 
 import (
@@ -44,11 +44,11 @@ import (
 
 func main() {
 	var (
-		target    = flag.String("target", "dev-fx-api.alif.tj:443", "FX Core gRPC address")
-		sdkId     = flag.String("sdk-id", "0sdfaabe", "SDK identifier")
-		apiKey    = flag.String("api-key", "e8TkgsfHNAGIHGvftKFcGjPETqKN1BQ==", "API key")
+		target    = flag.String("target", "sdftj:443", "FX Core gRPC address")
+		sdkId     = flag.String("sdk-id", "0sdf5359857", "SDK identifier")
+		apiKey    = flag.String("api-key", "GsdfSGGFssKbyNuqn8ZnqAA==", "API key")
 		dsn       = flag.String("dsn", "postgres://postgres:pass123@192.168.215.2:5432/fxdb?sslmode=disable", "Postgres DSN for the local orders table")
-		partnerId = flag.String("partner-id", "0sdf95eb5", "partner identifier")
+		partnerId = flag.String("partner-id", "01sdf9ea", "partner identifier")
 		clientId  = flag.String("client-id", "1278", "client identifier (required for filter)")
 		clientINN = flag.String("client-inn", "07128328", "client INN (taxpayer ID)")
 		insecureC = flag.Bool("insecure", false, "use plaintext gRPC (dev only)")
@@ -56,9 +56,10 @@ func main() {
 		market    = flag.Bool("market", false, "also submit a market order (priced by the book)")
 		tlsCert   = flag.String("tls-cert", "test-c.crt", "client certificate PEM for mTLS")
 		tlsKey    = flag.String("tls-key", "test-c.key", "client private key PEM for mTLS")
-		// Empty on purpose: the server certificate is publicly trusted (ACM),
-		// so the system roots verify it. ca-bundle.pem is the fx partner CA,
-		// which issued only our client certificate, not the server's.
+		// Намеренно пусто: сертификат сервера публично доверенный (ACM),
+		// поэтому его проверяют системные корневые сертификаты. ca-bundle.pem —
+		// это партнёрский CA fx, который выпустил только наш клиентский
+		// сертификат, а не серверный.
 		tlsCA = flag.String("tls-ca", "", "CA bundle PEM to verify the server; empty = system roots")
 		mTLS  = flag.Bool("mTLS", false, "present the client certificate (-tls-cert/-tls-key)")
 	)
@@ -72,15 +73,15 @@ func main() {
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt)
 	defer stop()
 
-	// Local Postgres pool used by the SDK to track submitted orders.
+	// Локальный пул Postgres, который SDK использует для учёта поданных ордеров.
 	pool, err := pgxpool.New(ctx, *dsn)
 	if err != nil {
 		log.Fatalf("connect db: %v", err)
 	}
 	defer pool.Close()
 
-	// Build SDK options. For production, use TLS (mTLS when -tls-cert/-tls-key
-	// are set) instead of grpc.WithTransportCredentials(insecure.NewCredentials()).
+	// Собираем опции SDK. В продакшене используйте TLS (mTLS, если заданы
+	// -tls-cert/-tls-key) вместо grpc.WithTransportCredentials(insecure.NewCredentials()).
 	opts := []v1.Option{
 		v1.WithMaxRetries(3),
 		v1.WithRetryBackoff(100*time.Millisecond, 5*time.Second),
@@ -113,8 +114,8 @@ func main() {
 	}
 	defer client.Close()
 
-	// 0. Subscribe to order events in the background.
-	// This will receive real-time updates for any order status changes.
+	// 0. Подписываемся на события ордеров в фоне.
+	// Получает обновления в реальном времени при любом изменении статуса ордера.
 	g.Go(func() error {
 		log.Printf("starting order events subscription...")
 		err := client.SubscribeOrderEvents(ctx, *partnerId, handleOrderEvent)
@@ -124,9 +125,9 @@ func main() {
 		return err
 	})
 
-	// 0b. Subscribe to trade events. The SDK persists the trade, computes
-	// settlement and fee, and updates the order; the handler below is
-	// responsible for the partner-specific account movements.
+	// 0b. Подписываемся на события сделок. SDK сохраняет сделку, считает
+	// расчётную сумму и комиссию и обновляет ордер; обработчик ниже отвечает
+	// за проводки по счетам, специфичные для партнёра.
 	g.Go(func() error {
 		log.Printf("starting trade subscription...")
 		err := client.SubscribeTrades(ctx, handleTrade)
@@ -136,9 +137,9 @@ func main() {
 		return err
 	})
 
-	// 0c. Drain any trades that were stored but not settled (handler failure,
-	// or a crash after ack but before settlement) on startup, then keep
-	// retrying them on a ticker. handleTrade must be idempotent.
+	// 0c. При старте разбираем сделки, которые сохранены, но не рассчитаны
+	// (сбой обработчика или падение после ack, но до расчёта), затем
+	// продолжаем повторять их по таймеру. handleTrade должен быть идемпотентным.
 	g.Go(func() error {
 		if err := client.RetryUnsettled(ctx, handleTrade); err != nil {
 			log.Printf("retry unsettled (startup): %v", err)
@@ -156,12 +157,12 @@ func main() {
 			}
 		}
 	})
-	// 0c-bis. Reconcile completed hours against the Core: on startup every hour
-	// of the day that has already closed, then a few minutes past every hour for
-	// the one that just closed. On a mismatch the SDK pulls the Core's trades for
-	// that same window, stores anything missing locally and runs handleTrade for
-	// it, then re-checks. Whatever is still mismatched after that needs a human —
-	// ReconcileDiff says which trades diverged.
+	// 0c-bis. Сверяем завершённые часы с Core: при старте — каждый уже закрытый
+	// час текущего дня, затем через несколько минут после каждого часа — только
+	// что закрывшийся. При расхождении SDK забирает сделки Core за то же окно,
+	// сохраняет локально всё недостающее и вызывает для него handleTrade, затем
+	// проверяет повторно. Всё, что после этого всё ещё расходится, требует
+	// участия человека — ReconcileDiff покажет, какие сделки разошлись.
 	g.Go(func() error {
 		reconcileHour := func(day string, hour int) {
 			params := &v1.ReconcileParams{
@@ -192,17 +193,18 @@ func main() {
 				len(diff.Mismatched), len(diff.Unsettled))
 		}
 
-		// Startup catch-up, from 00:00. A process that was down for six hours
-		// has six unreconciled slots, not one, so the hourly tick alone would
-		// leave permanent holes in the reconciliations table. Every hour is
-		// upserted on (dt, hour), so re-walking hours already recorded is cheap
-		// and idempotent — an hour that matched simply matches again.
+		// Догоняем при старте, начиная с 00:00. Процесс, простоявший шесть часов,
+		// оставляет шесть несверенных слотов, а не один, поэтому одного
+		// почасового тика было бы мало — в таблице reconciliations остались бы
+		// постоянные дыры. Каждый час записывается через upsert по (dt, hour),
+		// так что повторный проход по уже записанным часам дёшев и идемпотентен —
+		// совпавший час просто совпадёт снова.
 		//
-		// PreviousHour is the last completed hour in the SDK timezone
-		// (UTC+05:00). Do not derive it from the host clock: the Core compares
-		// the hour in +05, so a host in another zone would ask about the wrong
-		// window. Just after midnight it belongs to yesterday and today has no
-		// completed hour yet, so that single hour is all there is to do.
+		// PreviousHour — последний завершённый час в часовом поясе SDK
+		// (UTC+05:00). Не выводите его из часов хоста: Core сравнивает час в +05,
+		// поэтому хост в другом поясе спросил бы про не то окно. Сразу после
+		// полуночи он относится ко вчера, а у сегодняшнего дня ещё нет
+		// завершённого часа, так что делать нужно только этот единственный час.
 		day, hour := v1.PreviousHour()
 		if day == v1.Today() {
 			for h := range hour {
@@ -215,8 +217,8 @@ func main() {
 		reconcileHour(day, hour)
 
 		for {
-			// Anchored to the wall clock, not to process start: the run lands
-			// at hh:05 whenever the process happened to boot.
+			// Привязано к настенным часам, а не к старту процесса: запуск
+			// приходится на hh:05 независимо от того, когда процесс стартовал.
 			next := time.Now().In(v1.TimeZone).Truncate(time.Hour).Add(time.Hour + 5*time.Minute)
 			timer := time.NewTimer(time.Until(next))
 			select {
@@ -230,8 +232,8 @@ func main() {
 		}
 	})
 
-	// 0d. Fetch the available currency pairs and their trading specs. The
-	// partner is identified by metadata, so no parameters are required.
+	// 0d. Получаем доступные валютные пары и их торговые спецификации.
+	// Партнёр определяется по метаданным, поэтому параметры не нужны.
 	pairs, err := client.GetCurrencyPairs(ctx)
 	if err != nil {
 		log.Printf("get currency pairs error: %v", err)
@@ -245,24 +247,24 @@ func main() {
 
 	segment := v1.Retail
 	var acc = make(map[string]string)
-	// account details
+	// реквизиты счетов
 	acc["debit_account"] = "1278"
 	acc["credit_account"] = "4578"
 	var fee = make(map[string]string)
-	// fixed fee in percentage
+	// фиксированная комиссия в процентах
 	fee["fixed"] = "0.05"
 
-	// 1. Submit a small USD/TJS buy limit order at 9.31. OrderType is left unset,
-	// which the SDK treats as v1.LimitOrder.
+	// 1. Подаём небольшой лимитный ордер на покупку USD/TJS по 9.31. OrderType
+	// не задан, и SDK трактует это как v1.LimitOrder.
 	submitted, err := client.SubmitOrder(ctx, &v1.SubmitOrderParams{
-		Side:             v1.Sell,
+		Side:             v1.Buy,
 		Segment:          segment,
 		PartnerId:        *partnerId,
 		ClientId:         *clientId,
 		ClientINN:        *clientINN,
 		CurrencyPair:     "USD/TJS",
-		Quantity:         "5000.00",
-		LimitRate:        "9.280",
+		Quantity:         "50000.00",
+		LimitRate:        "10.00",
 		MinTradeQuantity: "100.00",
 		Account:          acc,
 		Fee:              fee,
@@ -277,23 +279,23 @@ func main() {
 			submitted.RefId, submitted.OrderDay, submitted.Status, submitted.Cause)
 	}
 
-	// 1b. Submit a market order. It carries no LimitRate — the book prices it,
-	// and whatever cannot be filled right away is cancelled rather than left
-	// resting. Because the price is not known in advance, the response reports
-	// the executed quantity and the weighted average rate synchronously; the
-	// individual trades still arrive on the trade subscription.
+	// 1b. Подаём рыночный ордер. У него нет LimitRate — цену определяет стакан,
+	// а всё, что нельзя исполнить сразу, отменяется, а не остаётся в стакане.
+	// Поскольку цена заранее неизвестна, ответ синхронно возвращает исполненное
+	// количество и средневзвешенный курс; отдельные сделки по-прежнему
+	// приходят по подписке на сделки.
 	if *market {
 		mkt, err := client.SubmitOrder(ctx, &v1.SubmitOrderParams{
-			Side:         v1.Sell,
-			Segment:      segment,
-			PartnerId:    *partnerId,
-			ClientId:     *clientId,
-			ClientINN:    *clientINN,
-			CurrencyPair: "USD/TJS",
-			Quantity:     "30000.00",
-			OrderType:    v1.MarketOrder,
-			Account:      acc,
-			Fee:          fee,
+			Side:             v1.Sell,
+			Segment:          segment,
+			PartnerId:        *partnerId,
+			ClientId:         *clientId,
+			ClientINN:        *clientINN,
+			CurrencyPair:     "USD/TJS",
+			Quantity:         "30000.00",
+			OrderType:        v1.MarketOrder,
+			Account:          acc,
+			Fee:              fee,
 		})
 		switch {
 		case err == v1.ErrDuplicateOrder:
@@ -306,8 +308,8 @@ func main() {
 		}
 	}
 
-	// 2. Filter the client's orders. ClientID is mandatory; the SDK defaults
-	// OrderDayFrom/To to today and today+1 when both are empty.
+	// 2. Фильтруем ордера клиента. ClientID обязателен; если OrderDayFrom/To
+	// оба пусты, SDK подставляет сегодня и сегодня+1.
 	filtered, err := client.FilterClientOrders(ctx, &v1.FilterClientOrdersParams{
 		PartnerId:    *partnerId,
 		ClientId:     *clientId,
@@ -324,7 +326,7 @@ func main() {
 			o.Quantity, o.RemainingQuantity, o.LimitRate, o.RefId)
 	}
 
-	// 3. Get order book depth.
+	// 3. Получаем глубину стакана.
 	depth, err := client.GetOrderBookDepth(ctx, &v1.GetOrderBookDepthParams{
 		Segment:      segment,
 		MaxLevels:    10,
@@ -346,13 +348,30 @@ func main() {
 		}
 	}
 
-	// 4. Cancel the order we just submitted (only if the submit succeeded).
-	if *cancel && submitted != nil {
+	// 4. Отменяем открытый ордер. CancelOrder нужен order_id из Core, который
+	// SubmitOrder не возвращает, поэтому сначала запрашиваем открытые ордера
+	// клиента через FilterClientOrders и отменяем первый из них.
+	if *cancel {
+		open, err := client.FilterClientOrders(ctx, &v1.FilterClientOrdersParams{
+			PartnerId:    *partnerId,
+			ClientId:     *clientId,
+			CurrencyPair: "USD/TJS",
+			Status:       v1.Pending,
+			Limit:        50,
+		})
+		if err != nil {
+			log.Fatalf("filter open orders: %v", err)
+		}
+		if len(open.Orders) == 0 {
+			log.Fatalf("cancel order: no open orders for client %s", *clientId)
+		}
+		// клиент выбирает, какой ордер отменить
+		target := open.Orders[0]
 		cancelled, err := client.CancelOrder(ctx, &v1.CancelOrderParams{
 			PartnerId: *partnerId,
 			ClientId:  *clientId,
-			OrderId:   submitted.RefId,
-			OrderDay:  submitted.OrderDay,
+			OrderId:   target.OrderId,
+			OrderDay:  target.OrderDay,
 		})
 		if err != nil {
 			log.Fatalf("cancel order: %v", err)
@@ -361,15 +380,15 @@ func main() {
 			cancelled.Success, cancelled.RemainingQuantity, cancelled.Status, cancelled.Cause)
 	}
 
-	// Wait briefly to allow the background subscription to catch any final events.
+	// Ждём, чтобы фоновая подписка успела поймать последние события.
 	if err := g.Wait(); err != nil {
 		log.Fatalln("shutdown:", err)
 	}
 }
 
-// loadTLSConfig builds the client TLS config. certFile and keyFile, when both
-// set, enable mTLS; caFile, when set, replaces the system roots for verifying
-// the server.
+// loadTLSConfig собирает клиентский TLS-конфиг. Если заданы и certFile, и
+// keyFile, включается mTLS; если задан caFile, он заменяет системные корневые
+// сертификаты при проверке сервера.
 func loadTLSConfig(certFile, keyFile, caFile string) (*tls.Config, error) {
 	cfg := &tls.Config{MinVersion: tls.VersionTLS12}
 
