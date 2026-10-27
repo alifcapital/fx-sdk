@@ -577,6 +577,7 @@ type OrderInfo struct {
 	OrderDay            *string `protobuf:"bytes,12,opt,name=order_day,json=orderDay" json:"order_day,omitempty"`
 	CounterpartySegment *int32  `protobuf:"varint,13,opt,name=counterparty_segment,json=counterpartySegment" json:"counterparty_segment,omitempty"` // 0 = any counterparty; 3 = treasury only
 	OrderType           *int32  `protobuf:"varint,14,opt,name=order_type,json=orderType" json:"order_type,omitempty"`                               // 1 = limit, 2 = market
+	ExpiresAt           *string `protobuf:"bytes,15,opt,name=expires_at,json=expiresAt" json:"expires_at,omitempty"`                                // RFC3339
 	unknownFields       protoimpl.UnknownFields
 	sizeCache           protoimpl.SizeCache
 }
@@ -707,6 +708,13 @@ func (x *OrderInfo) GetOrderType() int32 {
 		return *x.OrderType
 	}
 	return 0
+}
+
+func (x *OrderInfo) GetExpiresAt() string {
+	if x != nil && x.ExpiresAt != nil {
+		return *x.ExpiresAt
+	}
+	return ""
 }
 
 type GetOrderBookDepthRequest struct {
@@ -1074,7 +1082,7 @@ const file_forex_v1_order_proto_rawDesc = "" +
 	"partner_id\x18\n" +
 	" \x01(\tR\tpartnerId\"I\n" +
 	"\x1aFilterClientOrdersResponse\x12+\n" +
-	"\x06orders\x18\x01 \x03(\v2\x13.forex.v1.OrderInfoR\x06orders\"\xce\x03\n" +
+	"\x06orders\x18\x01 \x03(\v2\x13.forex.v1.OrderInfoR\x06orders\"\xed\x03\n" +
 	"\tOrderInfo\x12\x19\n" +
 	"\border_id\x18\x01 \x01(\x03R\aorderId\x12\x15\n" +
 	"\x06ref_id\x18\x02 \x01(\x03R\x05refId\x12\x12\n" +
@@ -1093,7 +1101,9 @@ const file_forex_v1_order_proto_rawDesc = "" +
 	"\torder_day\x18\f \x01(\tR\borderDay\x121\n" +
 	"\x14counterparty_segment\x18\r \x01(\x05R\x13counterpartySegment\x12\x1d\n" +
 	"\n" +
-	"order_type\x18\x0e \x01(\x05R\torderType\"\xb4\x01\n" +
+	"order_type\x18\x0e \x01(\x05R\torderType\x12\x1d\n" +
+	"\n" +
+	"expires_at\x18\x0f \x01(\tR\texpiresAt\"\xb4\x01\n" +
 	"\x18GetOrderBookDepthRequest\x12\x18\n" +
 	"\asegment\x18\x01 \x01(\x05R\asegment\x12\x1d\n" +
 	"\n" +

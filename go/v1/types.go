@@ -197,6 +197,7 @@ type Order struct {
 	RemainingQuantity string
 	CreatedAt         string
 	OrderDay          string
+	ExpiresAt         string    // RFC3339; empty if the Core did not report one
 	OrderType         OrderType // LimitOrder or MarketOrder
 	// CounterpartySegment is AnyCounterparty when the order may match any
 	// segment, or Treasury when it is restricted to treasury counterparties.

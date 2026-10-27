@@ -588,9 +588,9 @@ if err != nil {
 }
 
 for _, o := range res.Orders {
-    log.Printf("order_id=%d day=%s side=%d status=%d type=%d counterparty=%d qty=%s remaining=%s rate=%s ref=%d",
+    log.Printf("order_id=%d day=%s side=%d status=%d type=%d counterparty=%d qty=%s remaining=%s rate=%s ref=%d expires=%s",
         o.OrderId, o.OrderDay, o.Side, o.Status, o.OrderType, o.CounterpartySegment,
-        o.Quantity, o.RemainingQuantity, o.LimitRate, o.RefId)
+        o.Quantity, o.RemainingQuantity, o.LimitRate, o.RefId, o.ExpiresAt)
 }
 ```
 

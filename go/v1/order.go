@@ -329,6 +329,7 @@ func (c *Client) FilterClientOrders(ctx context.Context, p *FilterClientOrdersPa
 			RemainingQuantity: o.GetRemainingQuantity(),
 			CreatedAt:         o.GetCreatedAt(),
 			OrderDay:          o.GetOrderDay(),
+			ExpiresAt:         o.GetExpiresAt(),
 
 			OrderType:           OrderType(o.GetOrderType()),
 			CounterpartySegment: Segment(o.GetCounterpartySegment()),

@@ -44,11 +44,11 @@ import (
 
 func main() {
 	var (
-		target    = flag.String("target", "asd.tj:443", "FX Core gRPC address")
-		sdkId     = flag.String("sdk-id", "0asdf5b55359857", "SDK identifier")
-		apiKey    = flag.String("api-key", "Gsqka+qsdfyNuqn8ZnqAA==", "API key")
+		target    = flag.String("target", "sdfif.tj:443", "FX Core gRPC address")
+		sdkId     = flag.String("sdk-id", "01sdfb55359857", "SDK identifier")
+		apiKey    = flag.String("api-key", "GsdsfFssKbyNuqn8ZnqAA==", "API key")
 		dsn       = flag.String("dsn", "postgres://postgres:pass123@192.168.215.2:5432/fxdb?sslmode=disable", "Postgres DSN for the local orders table")
-		partnerId = flag.String("partner-id", "019sdf9ea", "partner identifier")
+		partnerId = flag.String("partner-id", "019dfg8289ea", "partner identifier")
 		clientId  = flag.String("client-id", "1278", "client identifier (required for filter)")
 		clientINN = flag.String("client-inn", "07128328", "client INN (taxpayer ID)")
 		insecureC = flag.Bool("insecure", false, "use plaintext gRPC (dev only)")
@@ -321,9 +321,9 @@ func main() {
 	}
 	log.Printf("found %d orders for client %s", len(filtered.Orders), *clientId)
 	for _, o := range filtered.Orders {
-		log.Printf("  order_id=%d day=%s side=%d status=%d type=%d counterparty=%d qty=%s remaining=%s rate=%s ref=%d",
+		log.Printf("  order_id=%d day=%s side=%d status=%d type=%d counterparty=%d qty=%s remaining=%s rate=%s ref=%d expires=%s",
 			o.OrderId, o.OrderDay, o.Side, o.Status, o.OrderType, o.CounterpartySegment,
-			o.Quantity, o.RemainingQuantity, o.LimitRate, o.RefId)
+			o.Quantity, o.RemainingQuantity, o.LimitRate, o.RefId, o.ExpiresAt)
 	}
 
 	// 3. Получаем глубину стакана.
