@@ -271,7 +271,7 @@ func main() {
 	})
 	switch {
 	case err == v1.ErrDuplicateOrder:
-		log.Printf("submit: duplicate detected within 2 minutes, skipping")
+		log.Printf("submit: duplicate detected within 1 minute, skipping")
 	case err != nil:
 		log.Fatalf("submit order: %v", err)
 	default:
@@ -299,7 +299,7 @@ func main() {
 		})
 		switch {
 		case err == v1.ErrDuplicateOrder:
-			log.Printf("market submit: duplicate detected within 2 minutes, skipping")
+			log.Printf("market submit: duplicate detected within 1 minute, skipping")
 		case err != nil:
 			log.Printf("market submit: %v", err)
 		default:

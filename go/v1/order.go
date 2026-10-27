@@ -75,7 +75,7 @@ func (c *Client) SubmitOrder(ctx context.Context, p *SubmitOrderParams) (*Submit
 	// this a seven-decimal quantity would be stored rounded, rejected remotely,
 	// and then block its own correction: the duplicate probe below compares the
 	// caller's raw string against the rounded row, so it misses the mistake and
-	// matches the fix instead, answering ErrDuplicateOrder for two minutes.
+	// matches the fix instead, answering ErrDuplicateOrder for one minute.
 	if err := checkDecimal("quantity", p.Quantity); err != nil {
 		return nil, err
 	}
@@ -90,7 +90,7 @@ func (c *Client) SubmitOrder(ctx context.Context, p *SubmitOrderParams) (*Submit
 		}
 	}
 
-	// 0. Check for duplicates in the last 2 minutes.
+	// 0. Check for duplicates in the last minute.
 	// Scoped to today's partition so the hypertable only scans a single chunk.
 	// it is like rate limiter
 	//
@@ -102,7 +102,7 @@ func (c *Client) SubmitOrder(ctx context.Context, p *SubmitOrderParams) (*Submit
 		`SELECT EXISTS (
 			SELECT 1 FROM client_orders
 			WHERE order_day = (NOW() `+atTZ+`)::date
-			  AND submitted_at > NOW() - INTERVAL '2 minutes'
+			  AND submitted_at > NOW() - INTERVAL '1 minutes'
 			  AND partner_id = $3
 			  AND client_id = $4
 			  AND side = $1
@@ -111,7 +111,7 @@ func (c *Client) SubmitOrder(ctx context.Context, p *SubmitOrderParams) (*Submit
 			  AND currency_pair = $6
 			  AND order_type = $7);`, p.Side, limitRate, p.PartnerId, p.ClientId, p.Quantity, p.CurrencyPair, orderType).Scan(&exists)
 	if err != nil {
-		return nil, fmt.Errorf("fx-sdk: check duplicate: %w", err)
+		return nil, fmt.Errorf("fx-sdk: не удалось проверить ордер на повтор: %w", err)
 	}
 	if exists {
 		return nil, ErrDuplicateOrder

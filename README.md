@@ -52,7 +52,7 @@ SDK оборачивает три gRPC-сервиса FX Core и синхрон�
   и только потом отправляется в Core. `ref_id` (идемпотентный ключ) генерируется
   базой как `BIGSERIAL`.
 - **Идемпотентность.** SDK защищает от дублей: одинаковый ордер в пределах
-  2 минут отклоняется (`ErrDuplicateOrder`).
+  1 минуты отклоняется (`ErrDuplicateOrder`).
 - **Надёжность стримов.** Подписки автоматически переподключаются с
   экспоненциальной задержкой (backoff) при временных сбоях.
 - **Гарантия расчёта сделок.** Сделка сначала надёжно сохраняется в БД, затем
@@ -423,7 +423,7 @@ res, err := client.SubmitOrder(ctx, &v1.SubmitOrderParams{
 })
 if err != nil {
     if errors.Is(err, v1.ErrDuplicateOrder) {
-        log.Println("дубликат ордера в пределах 2 минут — пропускаем")
+        log.Println("дубликат ордера в пределах 1 минуты — пропускаем")
         return
     }
     log.Fatalf("ошибка отправки ордера: %v", err)
@@ -457,7 +457,7 @@ log.Printf("ref_id=%d order_id=%d order_day=%s status=%d cause=%q",
 
 > **Защита от дублей:** если ордер с теми же `side`, `limit_rate`, `quantity`,
 > `currency_pair`, `order_type`, `partner_id`, `client_id` был отправлен за
-> последние 2 минуты, возвращается `v1.ErrDuplicateOrder`.
+> последнюю минуту, возвращается `v1.ErrDuplicateOrder`.
 
 ### Тип ордера — лимитный и рыночный
 
@@ -1199,7 +1199,7 @@ v1.CrossPartner        // 3 — разные партнёры, сегменты 
 
 | Ошибка | Когда возникает |
 |--------|-----------------|
-| `v1.ErrDuplicateOrder` | Дубликат ордера в пределах 2 минут |
+| `v1.ErrDuplicateOrder` | Дубликат ордера в пределах 1 минуты |
 | `v1.ErrClientIDRequired` | Не указан `client_id` |
 | `v1.ErrPartnerIDRequired` | Не указан `partner_id` |
 | `v1.ErrLimitRateRequired` | Лимитный ордер без `LimitRate` |
