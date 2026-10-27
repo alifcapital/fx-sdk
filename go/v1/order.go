@@ -1,0 +1,468 @@
+package v1
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"time"
+
+	"github.com/alifcapital/fx-sdk/go/forexv1"
+	"github.com/jackc/pgx/v5/pgconn"
+)
+
+// SubmitOrder inserts the order into the local database, reads back the
+// generated BIGSERIAL id and order_day, stringifies the id as ref_id, then
+// forwards the order to the Core. The local row is updated with the Core's
+// response status. The composite PK (id, order_day) is used on update so the
+// TimescaleDB hypertable can prune to a single partition.
+func (c *Client) SubmitOrder(ctx context.Context, p *SubmitOrderParams) (*SubmitOrderResult, error) {
+
+	if p == nil || p.ClientId == "" {
+		return nil, ErrClientIDRequired
+	}
+
+	if p.PartnerId == "" {
+		return nil, ErrPartnerIDRequired
+	}
+
+	if p.Segment < Retail || p.Segment > Treasury {
+		return nil, fmt.Errorf("fx-sdk: SubmitOrder: segment is required")
+	}
+
+	// order_type defaults to limit when the caller leaves it unset, matching the
+	// Core's own default for an absent field.
+	orderType := p.OrderType
+	if orderType == 0 {
+		orderType = LimitOrder
+	}
+	if orderType != LimitOrder && orderType != MarketOrder {
+		return nil, ErrInvalidOrderType
+	}
+
+	// A market order is priced by the book, so limit_rate carries no meaning and
+	// is dropped rather than stored as a rate the order never honoured. A limit
+	// order without a rate has nothing to execute against.
+	limitRate := &p.LimitRate
+	if orderType == MarketOrder {
+		limitRate = nil
+	} else if p.LimitRate == "" {
+		return nil, ErrLimitRateRequired
+	}
+
+	// counterparty_segment is a restriction, not a segment: only "any" and
+	// "treasury only" exist on the wire, and the latter is reserved for treasury
+	// orders.
+	switch p.CounterpartySegment {
+	case AnyCounterparty, Treasury:
+	default:
+		return nil, ErrInvalidCounterpartySegment
+	}
+	if p.CounterpartySegment == Treasury && p.Segment != Treasury {
+		return nil, ErrTreasuryCounterpartyOnly
+	}
+
+	// min_trade_quantity is optional: unset, the Core applies the currency
+	// pair's minimum. An empty string is not a decimal, so it goes to the DB as
+	// NULL. A market order is not rested in the book, so the field has no
+	// meaning there and is dropped like limit_rate.
+	var minTradeQuantity *string
+	if p.MinTradeQuantity != "" && orderType != MarketOrder {
+		minTradeQuantity = &p.MinTradeQuantity
+	}
+
+	// Precision is checked before anything is written or sent. The local columns
+	// are NUMERIC(28,6) and the Core refuses a finer value outright, so without
+	// this a seven-decimal quantity would be stored rounded, rejected remotely,
+	// and then block its own correction: the duplicate probe below compares the
+	// caller's raw string against the rounded row, so it misses the mistake and
+	// matches the fix instead, answering ErrDuplicateOrder for two minutes.
+	if err := checkDecimal("quantity", p.Quantity); err != nil {
+		return nil, err
+	}
+	if limitRate != nil {
+		if err := checkDecimal("limit_rate", *limitRate); err != nil {
+			return nil, err
+		}
+	}
+	if minTradeQuantity != nil {
+		if err := checkDecimal("min_trade_quantity", *minTradeQuantity); err != nil {
+			return nil, err
+		}
+	}
+
+	// 0. Check for duplicates in the last 2 minutes.
+	// Scoped to today's partition so the hypertable only scans a single chunk.
+	// it is like rate limiter
+	//
+	// "Today" is the UTC+05:00 calendar day, matching the order_day default, so
+	// the chunk this scans is the one the insert below lands in even when the
+	// session timezone would put the two on different sides of midnight.
+	var exists bool
+	err := c.db.QueryRow(ctx,
+		`SELECT EXISTS (
+			SELECT 1 FROM client_orders
+			WHERE order_day = (NOW() `+atTZ+`)::date
+			  AND submitted_at > NOW() - INTERVAL '2 minutes'
+			  AND partner_id = $3
+			  AND client_id = $4
+			  AND side = $1
+			  AND limit_rate IS NOT DISTINCT FROM $2
+			  AND quantity = $5
+			  AND currency_pair = $6
+			  AND order_type = $7);`, p.Side, limitRate, p.PartnerId, p.ClientId, p.Quantity, p.CurrencyPair, orderType).Scan(&exists)
+	if err != nil {
+		return nil, fmt.Errorf("fx-sdk: check duplicate: %w", err)
+	}
+	if exists {
+		return nil, ErrDuplicateOrder
+	}
+
+	// 1. Insert into client_orders; the DB assigns ref_id (BIGSERIAL) and
+	// order_day (defaults to the UTC+05:00 calendar day). Read both back so
+	// subsequent updates can target the composite PK, and so the order_day sent
+	// to the Core is the one actually stored.
+	var (
+		refId    int64
+		orderDay string
+	)
+	err = c.db.QueryRow(ctx,
+		`INSERT INTO client_orders (side, segment, quantity, limit_rate, remaining_quantity,
+		                            min_trade_quantity, currency_pair, partner_id,
+		                            client_id, client_inn, account, fee, order_type, counterparty_segment)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+		 RETURNING ref_id, to_char(order_day, 'YYYY-MM-DD');`,
+		p.Side, p.Segment,
+		p.Quantity, limitRate, p.Quantity, // remaining_quantity starts equal to quantity
+		minTradeQuantity,
+		p.CurrencyPair, p.PartnerId, p.ClientId, p.ClientINN,
+		p.Account, p.Fee,
+		orderType, p.CounterpartySegment,
+	).Scan(&refId, &orderDay)
+	if err != nil {
+		return nil, fmt.Errorf("fx-sdk: insert order: %w", err)
+	}
+
+	// 2. Build and send the gRPC request. ref_id is the local BIGSERIAL,
+	// carried over the wire as int64.
+	req := &forexv1.SubmitOrderRequest{
+		Side:                new(int32(p.Side)),
+		Segment:             new(int32(p.Segment)),
+		ClientId:            &p.ClientId,
+		ClientInn:           &p.ClientINN,
+		CurrencyPair:        &p.CurrencyPair,
+		Quantity:            &p.Quantity,
+		LimitRate:           limitRate,
+		RefId:               &refId,
+		OrderDay:            &orderDay,
+		MinTradeQuantity:    minTradeQuantity,
+		PartnerId:           &p.PartnerId,
+		OrderType:           new(int32(orderType)),
+		CounterpartySegment: new(int32(p.CounterpartySegment)),
+	}
+
+	resp, err := c.order.SubmitOrder(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("fx-sdk: submit order: %w", err)
+	}
+
+	// 3. Reflect the Core's response into the local row.
+	orderStatus := OrderStatus(resp.GetStatus())
+
+	// A market order is filled (or cancelled) synchronously, so the response
+	// already carries the executed quantity and the weighted average rate. The
+	// individual trades still arrive on the trade stream, which owns the
+	// remaining_quantity decrement — only the status is written here, so the two
+	// paths never double-count the same fill.
+	result := &SubmitOrderResult{
+		RefId:          refId,
+		OrderId:        resp.GetOrderId(),
+		OrderDay:       orderDay,
+		Status:         orderStatus,
+		FilledQuantity: resp.GetFilledQuantity(),
+		AverageRate:    resp.GetAverageRate(),
+	}
+
+	// order_id is zero when the Core rejected the order before saving it, and
+	// is stored as NULL then rather than as an id no Core order carries.
+	var cmd pgconn.CommandTag
+	switch orderStatus {
+	case Duplicate, Unknown:
+		return result, nil
+	case Pending:
+		// A resting order keeps the row's default status: the order event
+		// stream may already have moved it on, and writing Pending back here
+		// would undo that. Only the Core's order_id is recorded.
+		if result.OrderId == 0 {
+			return result, nil
+		}
+		cmd, err = c.db.Exec(ctx,
+			`UPDATE client_orders SET order_id = $1, updated_at = NOW()
+			  WHERE ref_id = $2 AND order_day = $3`, result.OrderId, refId, orderDay)
+	default:
+		cmd, err = c.db.Exec(ctx,
+			`UPDATE client_orders SET status = $1, cause = $2, order_id = NULLIF($3::bigint, 0), updated_at = NOW()
+			  WHERE ref_id = $4 AND order_day = $5`, orderStatus, resp.GetCause(), result.OrderId, refId, orderDay)
+	}
+	if err != nil {
+		log.Println("fx-sdk: submit order update: ", err)
+	}
+	if cmd.RowsAffected() != 1 {
+		log.Println("fx-sdk: submit order: expected 1 row affected, got: ", cmd.RowsAffected())
+	}
+
+	result.Cause = resp.GetCause()
+	return result, nil
+}
+
+// CancelOrder sends a cancellation request to the Core for an existing order.
+func (c *Client) CancelOrder(ctx context.Context, p *CancelOrderParams) (*CancelOrderResult, error) {
+	if p == nil || p.ClientId == "" {
+		return nil, ErrClientIDRequired
+	}
+	if p.PartnerId == "" {
+		return nil, ErrPartnerIDRequired
+	}
+	if p.OrderId == 0 {
+		return nil, fmt.Errorf("fx-sdk: cancel order: order_id is required")
+	}
+	if p.OrderDay == "" {
+		return nil, fmt.Errorf("fx-sdk: cancel order: order_day is required")
+	}
+	req := &forexv1.CancelOrderRequest{
+		ClientId:  &p.ClientId,
+		OrderId:   &p.OrderId,
+		OrderDay:  &p.OrderDay,
+		PartnerId: &p.PartnerId,
+	}
+
+	resp, err := c.order.CancelOrder(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("fx-sdk: cancel order: %w", err)
+	}
+
+	// Update the local order table using the ref_id returned by the Core —
+	// that's the local client_orders.ref_id we sent on submit.
+	orderStatus := OrderStatus(resp.GetOrderStatus())
+
+	if resp.GetSuccess() && resp.GetRefId() != 0 {
+		_, _ = c.db.Exec(ctx,
+			`UPDATE client_orders SET status = $1, cause = $2, remaining_quantity = $3, updated_at = NOW()
+			  WHERE order_day = $4 AND ref_id = $5`,
+			orderStatus, resp.GetCause(), resp.GetRemainingQuantity(), p.OrderDay, resp.GetRefId())
+	}
+
+	return &CancelOrderResult{
+		Success:           resp.GetSuccess(),
+		RemainingQuantity: resp.GetRemainingQuantity(),
+		Status:            orderStatus,
+		Cause:             resp.GetCause(),
+		RefId:             resp.GetRefId(),
+	}, nil
+}
+
+// FilterClientOrders queries the Core for a client's orders matching the given
+// filters. ClientID is mandatory. If OrderDayFrom or OrderDayTo is empty, the
+// SDK defaults them to today and today+1 (YYYY-MM-DD) respectively.
+func (c *Client) FilterClientOrders(ctx context.Context, p *FilterClientOrdersParams) (*FilterClientOrdersResult, error) {
+	if p == nil || p.ClientId == "" {
+		return nil, ErrClientIDRequired
+	}
+
+	if p.PartnerId == "" {
+		return nil, ErrPartnerIDRequired
+	}
+
+	from := p.OrderDayFrom
+	to := p.OrderDayTo
+	if from == "" || to == "" {
+		today := time.Now()
+		if from == "" {
+			from = today.Format("2006-01-02")
+		}
+		if to == "" {
+			to = today.AddDate(0, 0, 1).Format("2006-01-02")
+		}
+	}
+
+	req := &forexv1.FilterClientOrdersRequest{
+		ClientId:     &p.ClientId,
+		OrderDayFrom: &from,
+		OrderDayTo:   &to,
+		PartnerId:    &p.PartnerId,
+	}
+	if p.Side != 0 {
+		req.Side = new(int32(p.Side))
+	}
+	if p.Status != 0 {
+		req.Status = new(int32(p.Status))
+	}
+	if p.CurrencyPair != "" {
+		req.CurrencyPair = &p.CurrencyPair
+	}
+	if p.Limit > 0 {
+		req.Limit = &p.Limit
+	}
+	if p.Offset > 0 {
+		req.Offset = &p.Offset
+	}
+
+	resp, err := c.order.FilterClientOrders(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("fx-sdk: filter client orders: %w", err)
+	}
+
+	out := &FilterClientOrdersResult{
+		Orders: make([]Order, 0, len(resp.GetOrders())),
+	}
+
+	for _, o := range resp.GetOrders() {
+		out.Orders = append(out.Orders, Order{
+			OrderId:           o.GetOrderId(),
+			Side:              Side(o.GetSide()),
+			Segment:           Segment(o.GetSegment()),
+			Status:            OrderStatus(o.GetStatus()),
+			CurrencyPair:      o.GetCurrencyPair(),
+			Quantity:          o.GetQuantity(),
+			LimitRate:         o.GetLimitRate(),
+			RefId:             o.GetRefId(),
+			MinTradeQuantity:  o.GetMinTradeQuantity(),
+			RemainingQuantity: o.GetRemainingQuantity(),
+			CreatedAt:         o.GetCreatedAt(),
+			OrderDay:          o.GetOrderDay(),
+			ExpiresAt:         o.GetExpiresAt(),
+
+			OrderType:           OrderType(o.GetOrderType()),
+			CounterpartySegment: Segment(o.GetCounterpartySegment()),
+		})
+	}
+	return out, nil
+}
+
+// SubscribeOrderEvents subscribes to order status events from the Core.
+// When an event is received, it updates the local DB and calls the provided handler.
+//
+// The stream is reopened on transient gRPC errors (Unavailable,
+// ResourceExhausted) and clean server-side EOFs, backing off between attempts.
+// Unlike unary calls, a subscription is long-lived and reconnects indefinitely:
+// the method returns only when ctx is cancelled or the error is not retryable.
+// (maxRetries bounds per-call unary retries, not the lifetime of a stream.)
+func (c *Client) SubscribeOrderEvents(ctx context.Context, partnerId string, handler OrderEventHandler) error {
+	attempt := 0
+	for {
+		err := c.runOrderEventStream(ctx, partnerId, handler, &attempt)
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		if !isStreamRetryable(err) {
+			return fmt.Errorf("fx-sdk: subscribe order events: %w", err)
+		}
+		delay := backoff(attempt, c.baseDelay, c.maxDelay)
+		attempt++
+		log.Printf("fx-sdk: order event stream disconnected, reconnecting in %s (attempt %d): %v", delay, attempt, err)
+		t := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			t.Stop()
+			return ctx.Err()
+		case <-t.C:
+		}
+	}
+}
+
+// runOrderEventStream opens a single SubscribeOrderEvents stream and pumps
+// events until the stream returns an error. Once the server accepts the stream
+// the caller's attempt counter is reset, so a connection that re-establishes
+// successfully starts its next backoff from the base delay.
+func (c *Client) runOrderEventStream(ctx context.Context, partnerId string, handler OrderEventHandler, attempt *int) error {
+	stream, err := c.order.SubscribeOrderEvents(ctx, &forexv1.SubscribeOrderEventsRequest{
+		PartnerId: &partnerId,
+	})
+	if err != nil {
+		return err
+	}
+	// SubscribeOrderEvents opens the stream lazily; Header() blocks until the
+	// server actually accepts it. Reset the reconnect counter only once the
+	// connection is established, so backoff keeps growing if the open fails.
+	if _, err := stream.Header(); err != nil {
+		return err
+	}
+	*attempt = 0
+	for {
+		resp, err := stream.Recv()
+		if err != nil {
+			return err
+		}
+
+		event := &OrderEvent{
+			RefId:             resp.GetRefId(),
+			EventType:         OrderStatus(resp.GetEventType()),
+			EventTimestamp:    resp.GetEventTimestamp(),
+			RemainingQuantity: resp.GetRemainingQuantity(),
+			PartnerId:         resp.GetPartnerId(),
+		}
+
+		// Order events don't carry order_day, so we fall back to ref_id-only
+		// lookup. The ref_id column is still unique (BIGSERIAL) across chunks;
+		// TimescaleDB just cannot prune partitions for this path.
+		if resp.GetRefId() > 0 {
+			cmd, err := c.db.Exec(ctx,
+				`UPDATE client_orders SET status = $1, remaining_quantity = $2, updated_at = NOW() WHERE order_day = $3 AND ref_id = $4`,
+				event.EventType, event.RemainingQuantity, resp.GetOrderDay(), resp.GetRefId())
+			if err != nil {
+				log.Println("fx-sdk: update order status: ", err, " refID: ", resp.GetRefId(), " remainingQuantity: ", event.RemainingQuantity)
+			} else if cmd.RowsAffected() == 0 {
+				log.Println("fx-sdk: no rows affected: ", resp.GetRefId())
+			}
+		}
+
+		if handler != nil {
+			handler(event)
+		}
+	}
+}
+
+// GetOrderBookDepth returns the aggregated order book (bids and asks) for a given currency pair.
+func (c *Client) GetOrderBookDepth(ctx context.Context, p *GetOrderBookDepthParams) (*GetOrderBookDepthResult, error) {
+	if p == nil || p.ClientId == "" {
+		return nil, ErrClientIDRequired
+	}
+	if p.Segment < Retail || p.Segment > Treasury {
+		return nil, fmt.Errorf("fx-sdk: get order book depth: segment is required")
+	}
+	if p.PartnerId == "" {
+		return nil, ErrPartnerIDRequired
+	}
+	req := &forexv1.GetOrderBookDepthRequest{
+		Segment:      new(int32(p.Segment)),
+		MaxLevels:    &p.MaxLevels,
+		ClientId:     &p.ClientId,
+		CurrencyPair: &p.CurrencyPair,
+		PartnerId:    &p.PartnerId,
+	}
+
+	resp, err := c.order.GetOrderBookDepth(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("fx-sdk: get order book depth: %w", err)
+	}
+
+	out := &GetOrderBookDepthResult{
+		Bids: make([]PriceLevel, 0, len(resp.GetBids())),
+		Asks: make([]PriceLevel, 0, len(resp.GetAsks())),
+	}
+
+	for _, b := range resp.GetBids() {
+		out.Bids = append(out.Bids, PriceLevel{
+			Rate:          b.GetRate(),
+			TotalQuantity: b.GetTotalQuantity(),
+		})
+	}
+
+	for _, a := range resp.GetAsks() {
+		out.Asks = append(out.Asks, PriceLevel{
+			Rate:          a.GetRate(),
+			TotalQuantity: a.GetTotalQuantity(),
+		})
+	}
+
+	return out, nil
+}
