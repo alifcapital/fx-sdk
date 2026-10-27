@@ -27,8 +27,8 @@ const (
 )
 
 var (
-	// ErrDuplicateOrder is returned when a duplicate order is detected within 2 minutes.
-	ErrDuplicateOrder = errors.New("fx-sdk: duplicate order detected within 2 minutes")
+	// ErrDuplicateOrder is returned when the same order was submitted moments ago.
+	ErrDuplicateOrder = errors.New("fx-sdk: такой же ордер уже был отправлен только что, повторите позже")
 	// ErrClientIDRequired is returned when client_id is not provided.
 	ErrClientIDRequired = errors.New("fx-sdk: client_id is required")
 	// ErrPartnerIDRequired is returned when partner_id is not provided.
