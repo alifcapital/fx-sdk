@@ -429,8 +429,8 @@ if err != nil {
     log.Fatalf("ошибка отправки ордера: %v", err)
 }
 
-log.Printf("ref_id=%d order_day=%s status=%d cause=%q",
-    res.RefId, res.OrderDay, res.Status, res.Cause)
+log.Printf("ref_id=%d order_id=%d order_day=%s status=%d cause=%q",
+    res.RefId, res.OrderId, res.OrderDay, res.Status, res.Cause)
 ```
 
 **Обязательные поля:** `ClientId`, `PartnerId`, `Segment` (должен быть в диапазоне
@@ -448,6 +448,7 @@ log.Printf("ref_id=%d order_day=%s status=%d cause=%q",
 | Поле | Описание |
 |------|----------|
 | `RefId` | Локальный идемпотентный ключ (используется для отмены и сопоставления) |
+| `OrderId` | Идентификатор ордера в Core — его принимает `CancelOrder`; `0`, если Core отклонил ордер до сохранения. Также записывается в `client_orders.order_id` |
 | `OrderDay` | Дата ордера в формате `YYYY-MM-DD` |
 | `Status` | Статус, возвращённый Core (см. `OrderStatus`) |
 | `Cause` | Причина отклонения/ошибки, если есть |
@@ -519,8 +520,9 @@ res, err := client.SubmitOrder(ctx, &v1.SubmitOrderParams{
 
 Отменяет существующий ордер. Требует `OrderId` и `OrderDay`.
 
-`OrderId` — это идентификатор ордера **в Core**, а не локальный `RefId`:
-`SubmitOrder` его не возвращает. Получить его можно из
+`OrderId` — это идентификатор ордера **в Core**, а не локальный `RefId`.
+Его возвращает `SubmitOrder` (`SubmitOrderResult.OrderId`) и SDK сохраняет его в
+`client_orders.order_id`. Также его можно получить из
 [`FilterClientOrders`](#фильтрация-ордеров--filterclientorders) (`Order.OrderId`)
 или из события сделки (`TradeEvent.OrderId`).
 

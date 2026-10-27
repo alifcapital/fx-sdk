@@ -44,11 +44,11 @@ import (
 
 func main() {
 	var (
-		target    = flag.String("target", "sdftj:443", "FX Core gRPC address")
-		sdkId     = flag.String("sdk-id", "0sdf5359857", "SDK identifier")
-		apiKey    = flag.String("api-key", "GsdfSGGFssKbyNuqn8ZnqAA==", "API key")
+		target    = flag.String("target", "asd.tj:443", "FX Core gRPC address")
+		sdkId     = flag.String("sdk-id", "0asdf5b55359857", "SDK identifier")
+		apiKey    = flag.String("api-key", "Gsqka+qsdfyNuqn8ZnqAA==", "API key")
 		dsn       = flag.String("dsn", "postgres://postgres:pass123@192.168.215.2:5432/fxdb?sslmode=disable", "Postgres DSN for the local orders table")
-		partnerId = flag.String("partner-id", "01sdf9ea", "partner identifier")
+		partnerId = flag.String("partner-id", "019sdf9ea", "partner identifier")
 		clientId  = flag.String("client-id", "1278", "client identifier (required for filter)")
 		clientINN = flag.String("client-inn", "07128328", "client INN (taxpayer ID)")
 		insecureC = flag.Bool("insecure", false, "use plaintext gRPC (dev only)")
@@ -275,8 +275,8 @@ func main() {
 	case err != nil:
 		log.Fatalf("submit order: %v", err)
 	default:
-		log.Printf("submitted: ref_id=%d order_day=%s status=%d cause=%q",
-			submitted.RefId, submitted.OrderDay, submitted.Status, submitted.Cause)
+		log.Printf("submitted: ref_id=%d order_id=%d order_day=%s status=%d cause=%q",
+			submitted.RefId, submitted.OrderId, submitted.OrderDay, submitted.Status, submitted.Cause)
 	}
 
 	// 1b. Подаём рыночный ордер. У него нет LimitRate — цену определяет стакан,
@@ -348,9 +348,10 @@ func main() {
 		}
 	}
 
-	// 4. Отменяем открытый ордер. CancelOrder нужен order_id из Core, который
-	// SubmitOrder не возвращает, поэтому сначала запрашиваем открытые ордера
-	// клиента через FilterClientOrders и отменяем первый из них.
+	// 4. Отменяем открытый ордер. CancelOrder нужен order_id из Core: его
+	// возвращает SubmitOrder (и он хранится в client_orders.order_id), но здесь
+	// для примера запрашиваем открытые ордера клиента через FilterClientOrders
+	// и отменяем первый из них.
 	if *cancel {
 		open, err := client.FilterClientOrders(ctx, &v1.FilterClientOrdersParams{
 			PartnerId:    *partnerId,

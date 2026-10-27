@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/alifcapital/fx-sdk/go/forexv1"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 // SubmitOrder inserts the order into the local database, reads back the
@@ -174,21 +175,34 @@ func (c *Client) SubmitOrder(ctx context.Context, p *SubmitOrderParams) (*Submit
 	// paths never double-count the same fill.
 	result := &SubmitOrderResult{
 		RefId:          refId,
+		OrderId:        resp.GetOrderId(),
 		OrderDay:       orderDay,
 		Status:         orderStatus,
 		FilledQuantity: resp.GetFilledQuantity(),
 		AverageRate:    resp.GetAverageRate(),
 	}
 
+	// order_id is zero when the Core rejected the order before saving it, and
+	// is stored as NULL then rather than as an id no Core order carries.
+	var cmd pgconn.CommandTag
 	switch orderStatus {
-	case Pending, Duplicate, Unknown:
+	case Duplicate, Unknown:
 		return result, nil
+	case Pending:
+		// A resting order keeps the row's default status: the order event
+		// stream may already have moved it on, and writing Pending back here
+		// would undo that. Only the Core's order_id is recorded.
+		if result.OrderId == 0 {
+			return result, nil
+		}
+		cmd, err = c.db.Exec(ctx,
+			`UPDATE client_orders SET order_id = $1, updated_at = NOW()
+			  WHERE ref_id = $2 AND order_day = $3`, result.OrderId, refId, orderDay)
 	default:
+		cmd, err = c.db.Exec(ctx,
+			`UPDATE client_orders SET status = $1, cause = $2, order_id = NULLIF($3::bigint, 0), updated_at = NOW()
+			  WHERE ref_id = $4 AND order_day = $5`, orderStatus, resp.GetCause(), result.OrderId, refId, orderDay)
 	}
-
-	cmd, err := c.db.Exec(ctx,
-		`UPDATE client_orders SET status = $1, cause = $2, updated_at = NOW()
-		  WHERE ref_id = $3 AND order_day = $4`, orderStatus, resp.GetCause(), refId, orderDay)
 	if err != nil {
 		log.Println("fx-sdk: submit order update: ", err)
 	}

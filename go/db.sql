@@ -19,6 +19,7 @@ CREATE TABLE client_orders (
     -- joins a trade back to its order through this value.
     order_day               DATE NOT NULL DEFAULT (NOW() AT TIME ZONE INTERVAL '+05:00')::date,
     ref_id                  BIGSERIAL,
+    order_id                BIGINT,
     side                    SMALLINT NOT NULL,
     segment                 SMALLINT NOT NULL,
     status                  SMALLINT NOT NULL DEFAULT 1,

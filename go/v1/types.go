@@ -134,6 +134,7 @@ type SubmitOrderParams struct {
 // SubmitOrderResult contains the result of a submitted order.
 type SubmitOrderResult struct {
 	RefId    int64       // local client_orders.id used as ref_id (idempotency key); stringified on the wire
+	OrderId  int64       // Core order id, the one CancelOrder takes; 0 if rejected before the Core saved it
 	OrderDay string      // YYYY-MM-DD; value of the local client_orders.order_day column
 	Status   OrderStatus // status returned by the Core
 	Cause    string      // reason if the order was rejected/failed

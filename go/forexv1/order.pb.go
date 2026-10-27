@@ -181,8 +181,11 @@ type SubmitOrderResponse struct {
 	// on the trade stream.
 	FilledQuantity *string `protobuf:"bytes,3,opt,name=filled_quantity,json=filledQuantity" json:"filled_quantity,omitempty"`
 	AverageRate    *string `protobuf:"bytes,4,opt,name=average_rate,json=averageRate" json:"average_rate,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// The engine's id for the order, the one CancelOrder takes. Set once the
+	// order is saved, so a rejection before that leaves it at zero.
+	OrderId       *int64 `protobuf:"varint,5,opt,name=order_id,json=orderId" json:"order_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *SubmitOrderResponse) Reset() {
@@ -241,6 +244,13 @@ func (x *SubmitOrderResponse) GetAverageRate() string {
 		return *x.AverageRate
 	}
 	return ""
+}
+
+func (x *SubmitOrderResponse) GetOrderId() int64 {
+	if x != nil && x.OrderId != nil {
+		return *x.OrderId
+	}
+	return 0
 }
 
 type CancelOrderRequest struct {
@@ -1030,12 +1040,13 @@ const file_forex_v1_order_proto_rawDesc = "" +
 	"partner_id\x18\v \x01(\tR\tpartnerId\x121\n" +
 	"\x14counterparty_segment\x18\f \x01(\x05R\x13counterpartySegment\x12\x1d\n" +
 	"\n" +
-	"order_type\x18\r \x01(\x05R\torderType\"\x8f\x01\n" +
+	"order_type\x18\r \x01(\x05R\torderType\"\xaa\x01\n" +
 	"\x13SubmitOrderResponse\x12\x16\n" +
 	"\x06status\x18\x01 \x01(\x05R\x06status\x12\x14\n" +
 	"\x05cause\x18\x02 \x01(\tR\x05cause\x12'\n" +
 	"\x0ffilled_quantity\x18\x03 \x01(\tR\x0efilledQuantity\x12!\n" +
-	"\faverage_rate\x18\x04 \x01(\tR\vaverageRate\"\x88\x01\n" +
+	"\faverage_rate\x18\x04 \x01(\tR\vaverageRate\x12\x19\n" +
+	"\border_id\x18\x05 \x01(\x03R\aorderId\"\x88\x01\n" +
 	"\x12CancelOrderRequest\x12\x1b\n" +
 	"\tclient_id\x18\x01 \x01(\tR\bclientId\x12\x19\n" +
 	"\border_id\x18\x02 \x01(\x03R\aorderId\x12\x1b\n" +
