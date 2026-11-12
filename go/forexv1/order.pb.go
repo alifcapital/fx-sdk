@@ -26,13 +26,17 @@ type SubmitOrderRequest struct {
 	RefId        *int64                 `protobuf:"varint,1,opt,name=ref_id,json=refId" json:"ref_id,omitempty"`                     // partner's reference id, prevents duplicate orders on retry
 	Side         *int32                 `protobuf:"varint,2,opt,name=side" json:"side,omitempty"`                                    // 1 = buy, 2 = sell
 	Segment      *int32                 `protobuf:"varint,3,opt,name=segment" json:"segment,omitempty"`                              // 1 = Retail, 2 = Corporate, 3 = Treasury
-	ClientId     *string                `protobuf:"bytes,4,opt,name=client_id,json=clientId" json:"client_id,omitempty"`             // client's unique identifier
-	ClientInn    *string                `protobuf:"bytes,5,opt,name=client_inn,json=clientInn" json:"client_inn,omitempty"`          // client's INN (taxpayer identification number)
+	ClientId     *string                `protobuf:"bytes,4,opt,name=client_id,json=clientId" json:"client_id,omitempty"`             // client's unique identifier, 1 to 100 characters
+	ClientInn    *string                `protobuf:"bytes,5,opt,name=client_inn,json=clientInn" json:"client_inn,omitempty"`          // client's INN (taxpayer identification number), 9 to 12 digits
 	CurrencyPair *string                `protobuf:"bytes,6,opt,name=currency_pair,json=currencyPair" json:"currency_pair,omitempty"` // e.g. "USD/TJS"
 	// Every decimal string below carries at most 6 decimal places, which is what
 	// the engine stores. A finer value is rejected rather than rounded: the amount
 	// a partner reserved funds for has to be the amount that trades. Trailing
 	// zeros do not count as precision, so "1000.1000000" is accepted.
+	//
+	// An order is also bounded from above: neither quantity nor its counter-value
+	// (quantity x rate) may exceed 10^15. That is a technical ceiling far above
+	// any real deal, not a trading limit.
 	Quantity  *string `protobuf:"bytes,7,opt,name=quantity" json:"quantity,omitempty"`                    // quantity is in the Base currency (the first currency in the pair)
 	LimitRate *string `protobuf:"bytes,8,opt,name=limit_rate,json=limitRate" json:"limit_rate,omitempty"` // client's rate, positive decimal string
 	OrderDay  *string `protobuf:"bytes,9,opt,name=order_day,json=orderDay" json:"order_day,omitempty"`    // order day 'YYYY-MM-DD'

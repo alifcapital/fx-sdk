@@ -40,17 +40,19 @@ import (
 
 	v1 "github.com/alifcapital/fx-sdk/go/v1"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 func main() {
 	var (
-		target    = flag.String("target", "sdfif.tj:443", "FX Core gRPC address")
-		sdkId     = flag.String("sdk-id", "01sdfb55359857", "SDK identifier")
-		apiKey    = flag.String("api-key", "GsdsfFssKbyNuqn8ZnqAA==", "API key")
+		target    = flag.String("target", "dev-fx.tj:443", "FX Core gRPC address")
+		sdkId     = flag.String("sdk-id", "0sdf5359857", "SDK identifier")
+		apiKey    = flag.String("api-key", "GsdfssKbyNuqn8ZnqAA==", "API key")
 		dsn       = flag.String("dsn", "postgres://postgres:pass123@192.168.215.2:5432/fxdb?sslmode=disable", "Postgres DSN for the local orders table")
-		partnerId = flag.String("partner-id", "019dfg8289ea", "partner identifier")
+		partnerId = flag.String("partner-id", "01sdf8289ea", "partner identifier")
 		clientId  = flag.String("client-id", "1278", "client identifier (required for filter)")
-		clientINN = flag.String("client-inn", "07128328", "client INN (taxpayer ID)")
+		clientINN = flag.String("client-inn", "123456789", "client INN (taxpayer ID), 9 to 12 digits")
 		insecureC = flag.Bool("insecure", false, "use plaintext gRPC (dev only)")
 		cancel    = flag.Bool("cancel", false, "cancel the order after submission")
 		market    = flag.Bool("market", false, "also submit a market order (priced by the book)")
@@ -116,11 +118,17 @@ func main() {
 
 	// 0. Подписываемся на события ордеров в фоне.
 	// Получает обновления в реальном времени при любом изменении статуса ордера.
+	//
+	// На один SDK-ключ Core держит один стрим каждого вида. Если тем же ключом
+	// подключится второй экземпляр приложения, этот стрим закроется с кодом
+	// Aborted, а при отзыве ключа — с Unauthenticated. Обе ошибки SDK не
+	// повторяет: подписка возвращает их, и errgroup останавливает приложение.
+	// Молча продолжать работу без стрима нельзя — сделки и события не придут.
 	g.Go(func() error {
 		log.Printf("starting order events subscription...")
 		err := client.SubscribeOrderEvents(ctx, *partnerId, handleOrderEvent)
 		if err != nil && ctx.Err() == nil {
-			log.Printf("subscription error: %v", err)
+			log.Printf("subscription error: %v%s", err, streamHint(err))
 		}
 		return err
 	})
@@ -132,7 +140,7 @@ func main() {
 		log.Printf("starting trade subscription...")
 		err := client.SubscribeTrades(ctx, handleTrade)
 		if err != nil && ctx.Err() == nil {
-			log.Printf("trade subscription error: %v", err)
+			log.Printf("trade subscription error: %v%s", err, streamHint(err))
 		}
 		return err
 	})
@@ -271,7 +279,7 @@ func main() {
 	})
 	switch {
 	case err == v1.ErrDuplicateOrder:
-		log.Printf("submit: duplicate detected within 1 minute, skipping")
+		log.Printf("submit: duplicate detected within 1 minutes, skipping")
 	case err != nil:
 		log.Fatalf("submit order: %v", err)
 	default:
@@ -299,7 +307,7 @@ func main() {
 		})
 		switch {
 		case err == v1.ErrDuplicateOrder:
-			log.Printf("market submit: duplicate detected within 1 minute, skipping")
+			log.Printf("market submit: duplicate detected within 2 minutes, skipping")
 		case err != nil:
 			log.Printf("market submit: %v", err)
 		default:
@@ -416,6 +424,19 @@ func loadTLSConfig(certFile, keyFile, caFile string) (*tls.Config, error) {
 		cfg.RootCAs = pool
 	}
 	return cfg, nil
+}
+
+// streamHint объясняет две ошибки, после которых подписка не восстановится
+// сама и которые требуют действия от оператора, а не повтора.
+func streamHint(err error) string {
+	switch status.Code(err) {
+	case codes.Aborted:
+		return " — этим же SDK-ключом открыто другое подключение; на каждый экземпляр нужен свой ключ"
+	case codes.Unauthenticated:
+		return " — ключ SDK отозван или недействителен; обратитесь к администратору FX"
+	default:
+		return ""
+	}
 }
 
 func handleTrade(ctx context.Context, ev *v1.TradeEvent) error {

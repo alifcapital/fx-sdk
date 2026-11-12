@@ -368,8 +368,16 @@ type GetTradesRequest struct {
 	DtTo             *string                `protobuf:"bytes,3,opt,name=dt_to,json=dtTo" json:"dt_to,omitempty"`
 	PartnerId        *string                `protobuf:"bytes,4,opt,name=partner_id,json=partnerId" json:"partner_id,omitempty"`
 	IsReconciliation *bool                  `protobuf:"varint,5,opt,name=is_reconciliation,json=isReconciliation" json:"is_reconciliation,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// page_size asks for the window one page at a time: at most this many trades
+	// per response, capped at 1000. Leave it and page_token unset to get the
+	// whole window in one response, which is refused with RESOURCE_EXHAUSTED once
+	// the window holds more than 20000 trades — page it, or narrow it.
+	PageSize *int32 `protobuf:"varint,6,opt,name=page_size,json=pageSize" json:"page_size,omitempty"`
+	// page_token continues a paged read: pass next_page_token from the previous
+	// response, with every other field unchanged. It is opaque.
+	PageToken     *string `protobuf:"bytes,7,opt,name=page_token,json=pageToken" json:"page_token,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *GetTradesRequest) Reset() {
@@ -437,9 +445,26 @@ func (x *GetTradesRequest) GetIsReconciliation() bool {
 	return false
 }
 
+func (x *GetTradesRequest) GetPageSize() int32 {
+	if x != nil && x.PageSize != nil {
+		return *x.PageSize
+	}
+	return 0
+}
+
+func (x *GetTradesRequest) GetPageToken() string {
+	if x != nil && x.PageToken != nil {
+		return *x.PageToken
+	}
+	return ""
+}
+
 type GetTradesResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Trades        []*TradeResponse       `protobuf:"bytes,1,rep,name=trades" json:"trades,omitempty"`
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Trades []*TradeResponse       `protobuf:"bytes,1,rep,name=trades" json:"trades,omitempty"`
+	// next_page_token is set when the window holds more trades than this
+	// response carries. Empty means this was the last page.
+	NextPageToken *string `protobuf:"bytes,2,opt,name=next_page_token,json=nextPageToken" json:"next_page_token,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -479,6 +504,13 @@ func (x *GetTradesResponse) GetTrades() []*TradeResponse {
 		return x.Trades
 	}
 	return nil
+}
+
+func (x *GetTradesResponse) GetNextPageToken() string {
+	if x != nil && x.NextPageToken != nil {
+		return *x.NextPageToken
+	}
+	return ""
 }
 
 var File_forex_v1_trade_proto protoreflect.FileDescriptor
@@ -523,7 +555,7 @@ const file_forex_v1_trade_proto_rawDesc = "" +
 	"hash_check\x18\x01 \x01(\x03R\thashCheck\x12\x17\n" +
 	"\ahash_v2\x18\x02 \x01(\x03R\x06hashV2\x12\x1f\n" +
 	"\vtrade_count\x18\x03 \x01(\x03R\n" +
-	"tradeCount\"\xad\x01\n" +
+	"tradeCount\"\xe9\x01\n" +
 	"\x10GetTradesRequest\x12\x1f\n" +
 	"\vtrading_day\x18\x01 \x01(\tR\n" +
 	"tradingDay\x12\x17\n" +
@@ -531,9 +563,13 @@ const file_forex_v1_trade_proto_rawDesc = "" +
 	"\x05dt_to\x18\x03 \x01(\tR\x04dtTo\x12\x1d\n" +
 	"\n" +
 	"partner_id\x18\x04 \x01(\tR\tpartnerId\x12+\n" +
-	"\x11is_reconciliation\x18\x05 \x01(\bR\x10isReconciliation\"D\n" +
+	"\x11is_reconciliation\x18\x05 \x01(\bR\x10isReconciliation\x12\x1b\n" +
+	"\tpage_size\x18\x06 \x01(\x05R\bpageSize\x12\x1d\n" +
+	"\n" +
+	"page_token\x18\a \x01(\tR\tpageToken\"l\n" +
 	"\x11GetTradesResponse\x12/\n" +
-	"\x06trades\x18\x01 \x03(\v2\x17.forex.v1.TradeResponseR\x06trades2\xe7\x01\n" +
+	"\x06trades\x18\x01 \x03(\v2\x17.forex.v1.TradeResponseR\x06trades\x12&\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\xe7\x01\n" +
 	"\fTradeService\x12<\n" +
 	"\x05Trade\x12\x16.forex.v1.TradeRequest\x1a\x17.forex.v1.TradeResponse(\x010\x01\x12S\n" +
 	"\x0eReconciliation\x12\x1f.forex.v1.ReconciliationRequest\x1a .forex.v1.ReconciliationResponse\x12D\n" +

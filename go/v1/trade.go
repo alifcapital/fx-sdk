@@ -379,19 +379,57 @@ func (c *Client) GetTrades(ctx context.Context, p *GetTradesParams) ([]Trade, er
 //     two sets are identical; for one that serves several, a partner-scoped
 //     read would return a fraction of what the checksum covered and the repair
 //     would keep "fixing" an hour that never converges.
+//
+// The window is read a page at a time and returned whole. One response used to
+// carry all of it, and a busy day did not fit into a single gRPC message: the
+// call failed on exactly the partners with the most to reconcile. A Core that
+// predates paging ignores the page fields and answers with everything and no
+// token, which ends the loop after one round, so this works against either.
 func (c *Client) getTradesRaw(ctx context.Context, partnerId, day, dtFrom, dtTo string, reconcile bool) ([]*forexv1.TradeResponse, error) {
-	resp, err := c.trade.GetTrades(ctx, &forexv1.GetTradesRequest{
-		TradingDay:       &day,
-		DtFrom:           &dtFrom,
-		DtTo:             &dtTo,
-		PartnerId:        &partnerId,
-		IsReconciliation: &reconcile,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("fx-sdk: get trades %s [%s, %s): %w", day, dtFrom, dtTo, err)
+	var (
+		trades []*forexv1.TradeResponse
+		token  string
+	)
+	pageSize := int32(tradesPageSize)
+	for page := 0; ; page++ {
+		req := &forexv1.GetTradesRequest{
+			TradingDay:       &day,
+			DtFrom:           &dtFrom,
+			DtTo:             &dtTo,
+			PartnerId:        &partnerId,
+			IsReconciliation: &reconcile,
+			PageSize:         &pageSize,
+		}
+		if token != "" {
+			req.PageToken = &token
+		}
+		resp, err := c.trade.GetTrades(ctx, req)
+		if err != nil {
+			return nil, fmt.Errorf("fx-sdk: get trades %s [%s, %s): %w", day, dtFrom, dtTo, err)
+		}
+		trades = append(trades, resp.GetTrades()...)
+
+		next := resp.GetNextPageToken()
+		if next == "" {
+			return trades, nil
+		}
+		// A token that does not move, or a walk far longer than any real day,
+		// means the Core is not paging the way this loop assumes. Stop with an
+		// error rather than spin or hand back a list that looks complete.
+		if next == token || page >= maxTradePages {
+			return nil, fmt.Errorf("fx-sdk: get trades %s [%s, %s): paging did not finish after %d pages",
+				day, dtFrom, dtTo, page+1)
+		}
+		token = next
 	}
-	return resp.GetTrades(), nil
 }
+
+const (
+	// tradesPageSize is the Core's own maximum page.
+	tradesPageSize = 1000
+	// maxTradePages bounds one window at ten million trades.
+	maxTradePages = 10000
+)
 
 // toTrades projects the Core's messages onto the SDK type. No local enrichment
 // happens here — that is persistTrade's job.
