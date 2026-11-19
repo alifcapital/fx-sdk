@@ -341,8 +341,8 @@ func (c *Client) FilterClientOrders(ctx context.Context, p *FilterClientOrdersPa
 // SubscribeOrderEvents subscribes to order status events from the Core.
 // When an event is received, it updates the local DB and calls the provided handler.
 //
-// The stream is reopened on transient gRPC errors (Unavailable,
-// ResourceExhausted) and clean server-side EOFs, backing off between attempts.
+// The stream is reopened on every error except the ones a reconnect cannot fix
+// (see isStreamRetryable), backing off between attempts.
 // Unlike unary calls, a subscription is long-lived and reconnects indefinitely:
 // the method returns only when ctx is cancelled or the error is not retryable.
 // (maxRetries bounds per-call unary retries, not the lifetime of a stream.)

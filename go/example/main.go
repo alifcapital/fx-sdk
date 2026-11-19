@@ -46,11 +46,11 @@ import (
 
 func main() {
 	var (
-		target    = flag.String("target", "dev-fx.tj:443", "FX Core gRPC address")
-		sdkId     = flag.String("sdk-id", "0sdf5359857", "SDK identifier")
-		apiKey    = flag.String("api-key", "GsdfssKbyNuqn8ZnqAA==", "API key")
+		target    = flag.String("target", "sla.tj:8443", "FX Core gRPC address")
+		sdkId     = flag.String("sdk-id", "s7", "SDK identifier")
+		apiKey    = flag.String("api-key", "dseTBA==", "API key")
 		dsn       = flag.String("dsn", "postgres://postgres:pass123@192.168.215.2:5432/fxdb?sslmode=disable", "Postgres DSN for the local orders table")
-		partnerId = flag.String("partner-id", "01sdf8289ea", "partner identifier")
+		partnerId = flag.String("partner-id", "sce", "partner identifier")
 		clientId  = flag.String("client-id", "1278", "client identifier (required for filter)")
 		clientINN = flag.String("client-inn", "123456789", "client INN (taxpayer ID), 9 to 12 digits")
 		insecureC = flag.Bool("insecure", false, "use plaintext gRPC (dev only)")
