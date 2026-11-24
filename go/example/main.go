@@ -46,11 +46,11 @@ import (
 
 func main() {
 	var (
-		target    = flag.String("target", "sla.tj:8443", "FX Core gRPC address")
-		sdkId     = flag.String("sdk-id", "s7", "SDK identifier")
-		apiKey    = flag.String("api-key", "dseTBA==", "API key")
+		target    = flag.String("target", "test:8443", "FX Core gRPC address")
+		sdkId     = flag.String("sdk-id", "02347fcf7", "SDK identifier")
+		apiKey    = flag.String("api-key", "dQ234q07sd8JeTBA==", "API key")
 		dsn       = flag.String("dsn", "postgres://postgres:pass123@192.168.215.2:5432/fxdb?sslmode=disable", "Postgres DSN for the local orders table")
-		partnerId = flag.String("partner-id", "sce", "partner identifier")
+		partnerId = flag.String("partner-id", "sdfe", "partner identifier")
 		clientId  = flag.String("client-id", "1278", "client identifier (required for filter)")
 		clientINN = flag.String("client-inn", "123456789", "client INN (taxpayer ID), 9 to 12 digits")
 		insecureC = flag.Bool("insecure", false, "use plaintext gRPC (dev only)")
@@ -63,7 +63,7 @@ func main() {
 		// это партнёрский CA fx, который выпустил только наш клиентский
 		// сертификат, а не серверный.
 		tlsCA = flag.String("tls-ca", "", "CA bundle PEM to verify the server; empty = system roots")
-		mTLS  = flag.Bool("mTLS", false, "present the client certificate (-tls-cert/-tls-key)")
+		mTLS  = flag.Bool("mTLS", true, "present the client certificate (-tls-cert/-tls-key)")
 	)
 	flag.Parse()
 
