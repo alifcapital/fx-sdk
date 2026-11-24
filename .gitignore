@@ -2,3 +2,8 @@
 go/example/ca-bundle.pem
 go/example/client.crt
 go/example/client.key
+
+# TLS material: certificates, keys and CA bundles never go into git
+*.pem
+*.crt
+*.key

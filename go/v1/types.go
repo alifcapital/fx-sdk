@@ -260,6 +260,7 @@ type CurrencyPair struct {
 	MinTradeQuantity string // minimum tradable quantity (decimal string)
 	ValidRatePercent int32  // % band around the rate considered valid
 	NbtRate          string // NBT rate (decimal string)
+	TickSize         string // price step: LimitRate must be a multiple of it (decimal string)
 	IsActive         bool
 }
 

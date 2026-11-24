@@ -248,8 +248,8 @@ func main() {
 	} else {
 		log.Printf("available currency pairs (%d):", len(pairs))
 		for _, p := range pairs {
-			log.Printf("  %s active=%v min_lot=%s min_trade_qty=%s valid_rate_percent=%d nbt_rate=%s",
-				p.Pair, p.IsActive, p.MinLot, p.MinTradeQuantity, p.ValidRatePercent, p.NbtRate)
+			log.Printf("  %s active=%v min_lot=%s min_trade_qty=%s valid_rate_percent=%d nbt_rate=%s tick_size=%s",
+				p.Pair, p.IsActive, p.MinLot, p.MinTradeQuantity, p.ValidRatePercent, p.NbtRate, p.TickSize)
 		}
 	}
 
@@ -272,7 +272,7 @@ func main() {
 		ClientINN:        *clientINN,
 		CurrencyPair:     "USD/TJS",
 		Quantity:         "50000.00",
-		LimitRate:        "10.00",
+		LimitRate:        "10.00", // кратен шагу курса пары (TickSize), иначе Core отклонит ордер
 		MinTradeQuantity: "100.00",
 		Account:          acc,
 		Fee:              fee,

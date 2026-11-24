@@ -109,6 +109,7 @@ type CurrencyPair struct {
 	ValidRatePercent *int32                 `protobuf:"varint,4,opt,name=valid_rate_percent,json=validRatePercent" json:"valid_rate_percent,omitempty"` // % of the rate that is considered valid
 	NbtRate          *string                `protobuf:"bytes,5,opt,name=nbt_rate,json=nbtRate" json:"nbt_rate,omitempty"`                               // NBT rate
 	IsActive         *bool                  `protobuf:"varint,6,opt,name=is_active,json=isActive" json:"is_active,omitempty"`
+	TickSize         *string                `protobuf:"bytes,7,opt,name=tick_size,json=tickSize" json:"tick_size,omitempty"` // price step: limit_rate must be a multiple of it, e.g. "0.01"
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
@@ -185,6 +186,13 @@ func (x *CurrencyPair) GetIsActive() bool {
 	return false
 }
 
+func (x *CurrencyPair) GetTickSize() string {
+	if x != nil && x.TickSize != nil {
+		return *x.TickSize
+	}
+	return ""
+}
+
 var File_forex_v1_partner_proto protoreflect.FileDescriptor
 
 const file_forex_v1_partner_proto_rawDesc = "" +
@@ -192,14 +200,15 @@ const file_forex_v1_partner_proto_rawDesc = "" +
 	"\x16forex/v1/partner.proto\x12\bforex.v1\"\x19\n" +
 	"\x17GetCurrencyPairsRequest\"Y\n" +
 	"\x18GetCurrencyPairsResponse\x12=\n" +
-	"\x0ecurrency_pairs\x18\x01 \x03(\v2\x16.forex.v1.CurrencyPairR\rcurrencyPairs\"\xcf\x01\n" +
+	"\x0ecurrency_pairs\x18\x01 \x03(\v2\x16.forex.v1.CurrencyPairR\rcurrencyPairs\"\xec\x01\n" +
 	"\fCurrencyPair\x12\x12\n" +
 	"\x04pair\x18\x01 \x01(\tR\x04pair\x12\x17\n" +
 	"\amin_lot\x18\x02 \x01(\tR\x06minLot\x12,\n" +
 	"\x12min_trade_quantity\x18\x03 \x01(\tR\x10minTradeQuantity\x12,\n" +
 	"\x12valid_rate_percent\x18\x04 \x01(\x05R\x10validRatePercent\x12\x19\n" +
 	"\bnbt_rate\x18\x05 \x01(\tR\anbtRate\x12\x1b\n" +
-	"\tis_active\x18\x06 \x01(\bR\bisActive2k\n" +
+	"\tis_active\x18\x06 \x01(\bR\bisActive\x12\x1b\n" +
+	"\ttick_size\x18\a \x01(\tR\btickSize2k\n" +
 	"\x0ePartnerService\x12Y\n" +
 	"\x10GetCurrencyPairs\x12!.forex.v1.GetCurrencyPairsRequest\x1a\".forex.v1.GetCurrencyPairsResponseB\x8f\x01\n" +
 	"\fcom.forex.v1B\fPartnerProtoP\x01Z0github.com/alifcapital/fx/proto/forex/v1;forexv1\xa2\x02\x03FXX\xaa\x02\bForex.V1\xca\x02\bForex\\V1\xe2\x02\x14Forex\\V1\\GPBMetadata\xea\x02\tForex::V1b\beditionsp\xe8\a"
