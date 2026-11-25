@@ -24,6 +24,7 @@ const (
 	OrderService_GetOrderBookDepth_FullMethodName    = "/forex.v1.OrderService/GetOrderBookDepth"
 	OrderService_FilterClientOrders_FullMethodName   = "/forex.v1.OrderService/FilterClientOrders"
 	OrderService_SubscribeOrderEvents_FullMethodName = "/forex.v1.OrderService/SubscribeOrderEvents"
+	OrderService_GetOrderStatuses_FullMethodName     = "/forex.v1.OrderService/GetOrderStatuses"
 )
 
 // OrderServiceClient is the client API for OrderService service.
@@ -35,6 +36,10 @@ type OrderServiceClient interface {
 	GetOrderBookDepth(ctx context.Context, in *GetOrderBookDepthRequest, opts ...grpc.CallOption) (*GetOrderBookDepthResponse, error)
 	FilterClientOrders(ctx context.Context, in *FilterClientOrdersRequest, opts ...grpc.CallOption) (*FilterClientOrdersResponse, error)
 	SubscribeOrderEvents(ctx context.Context, in *SubscribeOrderEventsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[SubscribeOrderEventsResponse], error)
+	// GetOrderStatuses returns the current status of up to 500 of the caller's
+	// own orders, looked up by the keys the SDK itself assigns (order_day, ref_id).
+	// It is how a partner repairs local orders whose order event never arrived.
+	GetOrderStatuses(ctx context.Context, in *GetOrderStatusesRequest, opts ...grpc.CallOption) (*GetOrderStatusesResponse, error)
 }
 
 type orderServiceClient struct {
@@ -104,6 +109,16 @@ func (c *orderServiceClient) SubscribeOrderEvents(ctx context.Context, in *Subsc
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type OrderService_SubscribeOrderEventsClient = grpc.ServerStreamingClient[SubscribeOrderEventsResponse]
 
+func (c *orderServiceClient) GetOrderStatuses(ctx context.Context, in *GetOrderStatusesRequest, opts ...grpc.CallOption) (*GetOrderStatusesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetOrderStatusesResponse)
+	err := c.cc.Invoke(ctx, OrderService_GetOrderStatuses_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // OrderServiceServer is the server API for OrderService service.
 // All implementations must embed UnimplementedOrderServiceServer
 // for forward compatibility.
@@ -113,6 +128,10 @@ type OrderServiceServer interface {
 	GetOrderBookDepth(context.Context, *GetOrderBookDepthRequest) (*GetOrderBookDepthResponse, error)
 	FilterClientOrders(context.Context, *FilterClientOrdersRequest) (*FilterClientOrdersResponse, error)
 	SubscribeOrderEvents(*SubscribeOrderEventsRequest, grpc.ServerStreamingServer[SubscribeOrderEventsResponse]) error
+	// GetOrderStatuses returns the current status of up to 500 of the caller's
+	// own orders, looked up by the keys the SDK itself assigns (order_day, ref_id).
+	// It is how a partner repairs local orders whose order event never arrived.
+	GetOrderStatuses(context.Context, *GetOrderStatusesRequest) (*GetOrderStatusesResponse, error)
 	mustEmbedUnimplementedOrderServiceServer()
 }
 
@@ -137,6 +156,9 @@ func (UnimplementedOrderServiceServer) FilterClientOrders(context.Context, *Filt
 }
 func (UnimplementedOrderServiceServer) SubscribeOrderEvents(*SubscribeOrderEventsRequest, grpc.ServerStreamingServer[SubscribeOrderEventsResponse]) error {
 	return status.Error(codes.Unimplemented, "method SubscribeOrderEvents not implemented")
+}
+func (UnimplementedOrderServiceServer) GetOrderStatuses(context.Context, *GetOrderStatusesRequest) (*GetOrderStatusesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetOrderStatuses not implemented")
 }
 func (UnimplementedOrderServiceServer) mustEmbedUnimplementedOrderServiceServer() {}
 func (UnimplementedOrderServiceServer) testEmbeddedByValue()                      {}
@@ -242,6 +264,24 @@ func _OrderService_SubscribeOrderEvents_Handler(srv interface{}, stream grpc.Ser
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type OrderService_SubscribeOrderEventsServer = grpc.ServerStreamingServer[SubscribeOrderEventsResponse]
 
+func _OrderService_GetOrderStatuses_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetOrderStatusesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OrderServiceServer).GetOrderStatuses(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: OrderService_GetOrderStatuses_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OrderServiceServer).GetOrderStatuses(ctx, req.(*GetOrderStatusesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // OrderService_ServiceDesc is the grpc.ServiceDesc for OrderService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -264,6 +304,10 @@ var OrderService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "FilterClientOrders",
 			Handler:    _OrderService_FilterClientOrders_Handler,
+		},
+		{
+			MethodName: "GetOrderStatuses",
+			Handler:    _OrderService_GetOrderStatuses_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

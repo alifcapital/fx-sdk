@@ -175,19 +175,18 @@ func (x *SubmitOrderRequest) GetOrderType() int32 {
 	return 0
 }
 
+// SubmitOrderResponse says only whether the order was accepted. Everything
+// matching does to it afterwards — fills, the cancelled remainder of a market
+// order, expiry — reaches the partner over the trade and order event streams.
 type SubmitOrderResponse struct {
-	state  protoimpl.MessageState `protogen:"open.v1"`
-	Status *int32                 `protobuf:"varint,1,opt,name=status" json:"status,omitempty"`
-	Cause  *string                `protobuf:"bytes,2,opt,name=cause" json:"cause,omitempty"`
-	// Filled in for market orders, where the partner cannot know the price in
-	// advance: quantity actually executed and the weighted average rate across
-	// the trades of this submission. Empty for limit orders, whose fills arrive
-	// on the trade stream.
-	FilledQuantity *string `protobuf:"bytes,3,opt,name=filled_quantity,json=filledQuantity" json:"filled_quantity,omitempty"`
-	AverageRate    *string `protobuf:"bytes,4,opt,name=average_rate,json=averageRate" json:"average_rate,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// 1 Pending: accepted and stored. 9 Rejected: refused before it was stored
+	// (cause says why). 10 Duplicate. 6 Failed: stored but could not be placed.
+	Status *int32  `protobuf:"varint,1,opt,name=status" json:"status,omitempty"`
+	Cause  *string `protobuf:"bytes,2,opt,name=cause" json:"cause,omitempty"`
 	// The engine's id for the order, the one CancelOrder takes. Set once the
 	// order is saved, so a rejection before that leaves it at zero.
-	OrderId       *int64 `protobuf:"varint,5,opt,name=order_id,json=orderId" json:"order_id,omitempty"`
+	OrderId       *int64 `protobuf:"varint,3,opt,name=order_id,json=orderId" json:"order_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -232,20 +231,6 @@ func (x *SubmitOrderResponse) GetStatus() int32 {
 func (x *SubmitOrderResponse) GetCause() string {
 	if x != nil && x.Cause != nil {
 		return *x.Cause
-	}
-	return ""
-}
-
-func (x *SubmitOrderResponse) GetFilledQuantity() string {
-	if x != nil && x.FilledQuantity != nil {
-		return *x.FilledQuantity
-	}
-	return ""
-}
-
-func (x *SubmitOrderResponse) GetAverageRate() string {
-	if x != nil && x.AverageRate != nil {
-		return *x.AverageRate
 	}
 	return ""
 }
@@ -1029,11 +1014,258 @@ func (x *SubscribeOrderEventsResponse) GetPartnerId() string {
 	return ""
 }
 
+// OrderKey identifies one order of the calling SDK key: the day the order was
+// submitted for and the partner's own ref_id. Both are known to the SDK before
+// the order is sent, so an order whose submit response was lost can still be
+// looked up.
+type OrderKey struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	OrderDay      *string                `protobuf:"bytes,1,opt,name=order_day,json=orderDay" json:"order_day,omitempty"` // 'YYYY-MM-DD'
+	RefId         *int64                 `protobuf:"varint,2,opt,name=ref_id,json=refId" json:"ref_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *OrderKey) Reset() {
+	*x = OrderKey{}
+	mi := &file_forex_v1_order_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *OrderKey) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*OrderKey) ProtoMessage() {}
+
+func (x *OrderKey) ProtoReflect() protoreflect.Message {
+	mi := &file_forex_v1_order_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use OrderKey.ProtoReflect.Descriptor instead.
+func (*OrderKey) Descriptor() ([]byte, []int) {
+	return file_forex_v1_order_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *OrderKey) GetOrderDay() string {
+	if x != nil && x.OrderDay != nil {
+		return *x.OrderDay
+	}
+	return ""
+}
+
+func (x *OrderKey) GetRefId() int64 {
+	if x != nil && x.RefId != nil {
+		return *x.RefId
+	}
+	return 0
+}
+
+type GetOrderStatusesRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	PartnerId     *string                `protobuf:"bytes,1,opt,name=partner_id,json=partnerId" json:"partner_id,omitempty"`
+	Keys          []*OrderKey            `protobuf:"bytes,2,rep,name=keys" json:"keys,omitempty"` // 1 to 500 keys
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetOrderStatusesRequest) Reset() {
+	*x = GetOrderStatusesRequest{}
+	mi := &file_forex_v1_order_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetOrderStatusesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetOrderStatusesRequest) ProtoMessage() {}
+
+func (x *GetOrderStatusesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_forex_v1_order_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetOrderStatusesRequest.ProtoReflect.Descriptor instead.
+func (*GetOrderStatusesRequest) Descriptor() ([]byte, []int) {
+	return file_forex_v1_order_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *GetOrderStatusesRequest) GetPartnerId() string {
+	if x != nil && x.PartnerId != nil {
+		return *x.PartnerId
+	}
+	return ""
+}
+
+func (x *GetOrderStatusesRequest) GetKeys() []*OrderKey {
+	if x != nil {
+		return x.Keys
+	}
+	return nil
+}
+
+type OrderStatusInfo struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	OrderDay          *string                `protobuf:"bytes,1,opt,name=order_day,json=orderDay" json:"order_day,omitempty"`
+	RefId             *int64                 `protobuf:"varint,2,opt,name=ref_id,json=refId" json:"ref_id,omitempty"`
+	Found             *bool                  `protobuf:"varint,3,opt,name=found" json:"found,omitempty"`                                                 // false: no order with this key exists for this sdk key and partner
+	OrderId           *int64                 `protobuf:"varint,4,opt,name=order_id,json=orderId" json:"order_id,omitempty"`                              // set when found
+	Status            *int32                 `protobuf:"varint,5,opt,name=status" json:"status,omitempty"`                                               // order status, set when found
+	RemainingQuantity *string                `protobuf:"bytes,6,opt,name=remaining_quantity,json=remainingQuantity" json:"remaining_quantity,omitempty"` // set when found
+	// Every settled trade of the order, in the same shape GetTrades returns, so
+	// a caller can store the ones it is missing before comparing quantities.
+	Trades        []*TradeResponse `protobuf:"bytes,7,rep,name=trades" json:"trades,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *OrderStatusInfo) Reset() {
+	*x = OrderStatusInfo{}
+	mi := &file_forex_v1_order_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *OrderStatusInfo) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*OrderStatusInfo) ProtoMessage() {}
+
+func (x *OrderStatusInfo) ProtoReflect() protoreflect.Message {
+	mi := &file_forex_v1_order_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use OrderStatusInfo.ProtoReflect.Descriptor instead.
+func (*OrderStatusInfo) Descriptor() ([]byte, []int) {
+	return file_forex_v1_order_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *OrderStatusInfo) GetOrderDay() string {
+	if x != nil && x.OrderDay != nil {
+		return *x.OrderDay
+	}
+	return ""
+}
+
+func (x *OrderStatusInfo) GetRefId() int64 {
+	if x != nil && x.RefId != nil {
+		return *x.RefId
+	}
+	return 0
+}
+
+func (x *OrderStatusInfo) GetFound() bool {
+	if x != nil && x.Found != nil {
+		return *x.Found
+	}
+	return false
+}
+
+func (x *OrderStatusInfo) GetOrderId() int64 {
+	if x != nil && x.OrderId != nil {
+		return *x.OrderId
+	}
+	return 0
+}
+
+func (x *OrderStatusInfo) GetStatus() int32 {
+	if x != nil && x.Status != nil {
+		return *x.Status
+	}
+	return 0
+}
+
+func (x *OrderStatusInfo) GetRemainingQuantity() string {
+	if x != nil && x.RemainingQuantity != nil {
+		return *x.RemainingQuantity
+	}
+	return ""
+}
+
+func (x *OrderStatusInfo) GetTrades() []*TradeResponse {
+	if x != nil {
+		return x.Trades
+	}
+	return nil
+}
+
+type GetOrderStatusesResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// One entry per distinct requested key, in no particular order.
+	Orders        []*OrderStatusInfo `protobuf:"bytes,1,rep,name=orders" json:"orders,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetOrderStatusesResponse) Reset() {
+	*x = GetOrderStatusesResponse{}
+	mi := &file_forex_v1_order_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetOrderStatusesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetOrderStatusesResponse) ProtoMessage() {}
+
+func (x *GetOrderStatusesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_forex_v1_order_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetOrderStatusesResponse.ProtoReflect.Descriptor instead.
+func (*GetOrderStatusesResponse) Descriptor() ([]byte, []int) {
+	return file_forex_v1_order_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *GetOrderStatusesResponse) GetOrders() []*OrderStatusInfo {
+	if x != nil {
+		return x.Orders
+	}
+	return nil
+}
+
 var File_forex_v1_order_proto protoreflect.FileDescriptor
 
 const file_forex_v1_order_proto_rawDesc = "" +
 	"\n" +
-	"\x14forex/v1/order.proto\x12\bforex.v1\"\xb1\x03\n" +
+	"\x14forex/v1/order.proto\x12\bforex.v1\x1a\x14forex/v1/trade.proto\"\xb1\x03\n" +
 	"\x12SubmitOrderRequest\x12\x15\n" +
 	"\x06ref_id\x18\x01 \x01(\x03R\x05refId\x12\x12\n" +
 	"\x04side\x18\x02 \x01(\x05R\x04side\x12\x18\n" +
@@ -1052,13 +1284,11 @@ const file_forex_v1_order_proto_rawDesc = "" +
 	"partner_id\x18\v \x01(\tR\tpartnerId\x121\n" +
 	"\x14counterparty_segment\x18\f \x01(\x05R\x13counterpartySegment\x12\x1d\n" +
 	"\n" +
-	"order_type\x18\r \x01(\x05R\torderType\"\xaa\x01\n" +
+	"order_type\x18\r \x01(\x05R\torderType\"^\n" +
 	"\x13SubmitOrderResponse\x12\x16\n" +
 	"\x06status\x18\x01 \x01(\x05R\x06status\x12\x14\n" +
-	"\x05cause\x18\x02 \x01(\tR\x05cause\x12'\n" +
-	"\x0ffilled_quantity\x18\x03 \x01(\tR\x0efilledQuantity\x12!\n" +
-	"\faverage_rate\x18\x04 \x01(\tR\vaverageRate\x12\x19\n" +
-	"\border_id\x18\x05 \x01(\x03R\aorderId\"\x88\x01\n" +
+	"\x05cause\x18\x02 \x01(\tR\x05cause\x12\x19\n" +
+	"\border_id\x18\x03 \x01(\x03R\aorderId\"\x88\x01\n" +
 	"\x12CancelOrderRequest\x12\x1b\n" +
 	"\tclient_id\x18\x01 \x01(\tR\bclientId\x12\x19\n" +
 	"\border_id\x18\x02 \x01(\x03R\aorderId\x12\x1b\n" +
@@ -1134,13 +1364,31 @@ const file_forex_v1_order_proto_rawDesc = "" +
 	"\x12remaining_quantity\x18\x04 \x01(\tR\x11remainingQuantity\x12\x1b\n" +
 	"\torder_day\x18\x05 \x01(\tR\borderDay\x12\x1d\n" +
 	"\n" +
-	"partner_id\x18\x06 \x01(\tR\tpartnerId2\xce\x03\n" +
+	"partner_id\x18\x06 \x01(\tR\tpartnerId\">\n" +
+	"\bOrderKey\x12\x1b\n" +
+	"\torder_day\x18\x01 \x01(\tR\borderDay\x12\x15\n" +
+	"\x06ref_id\x18\x02 \x01(\x03R\x05refId\"`\n" +
+	"\x17GetOrderStatusesRequest\x12\x1d\n" +
+	"\n" +
+	"partner_id\x18\x01 \x01(\tR\tpartnerId\x12&\n" +
+	"\x04keys\x18\x02 \x03(\v2\x12.forex.v1.OrderKeyR\x04keys\"\xee\x01\n" +
+	"\x0fOrderStatusInfo\x12\x1b\n" +
+	"\torder_day\x18\x01 \x01(\tR\borderDay\x12\x15\n" +
+	"\x06ref_id\x18\x02 \x01(\x03R\x05refId\x12\x14\n" +
+	"\x05found\x18\x03 \x01(\bR\x05found\x12\x19\n" +
+	"\border_id\x18\x04 \x01(\x03R\aorderId\x12\x16\n" +
+	"\x06status\x18\x05 \x01(\x05R\x06status\x12-\n" +
+	"\x12remaining_quantity\x18\x06 \x01(\tR\x11remainingQuantity\x12/\n" +
+	"\x06trades\x18\a \x03(\v2\x17.forex.v1.TradeResponseR\x06trades\"M\n" +
+	"\x18GetOrderStatusesResponse\x121\n" +
+	"\x06orders\x18\x01 \x03(\v2\x19.forex.v1.OrderStatusInfoR\x06orders2\xa9\x04\n" +
 	"\fOrderService\x12J\n" +
 	"\vSubmitOrder\x12\x1c.forex.v1.SubmitOrderRequest\x1a\x1d.forex.v1.SubmitOrderResponse\x12J\n" +
 	"\vCancelOrder\x12\x1c.forex.v1.CancelOrderRequest\x1a\x1d.forex.v1.CancelOrderResponse\x12\\\n" +
 	"\x11GetOrderBookDepth\x12\".forex.v1.GetOrderBookDepthRequest\x1a#.forex.v1.GetOrderBookDepthResponse\x12_\n" +
 	"\x12FilterClientOrders\x12#.forex.v1.FilterClientOrdersRequest\x1a$.forex.v1.FilterClientOrdersResponse\x12g\n" +
-	"\x14SubscribeOrderEvents\x12%.forex.v1.SubscribeOrderEventsRequest\x1a&.forex.v1.SubscribeOrderEventsResponse0\x01B\x8d\x01\n" +
+	"\x14SubscribeOrderEvents\x12%.forex.v1.SubscribeOrderEventsRequest\x1a&.forex.v1.SubscribeOrderEventsResponse0\x01\x12Y\n" +
+	"\x10GetOrderStatuses\x12!.forex.v1.GetOrderStatusesRequest\x1a\".forex.v1.GetOrderStatusesResponseB\x8d\x01\n" +
 	"\fcom.forex.v1B\n" +
 	"OrderProtoP\x01Z0github.com/alifcapital/fx/proto/forex/v1;forexv1\xa2\x02\x03FXX\xaa\x02\bForex.V1\xca\x02\bForex\\V1\xe2\x02\x14Forex\\V1\\GPBMetadata\xea\x02\tForex::V1b\beditionsp\xe8\a"
 
@@ -1156,7 +1404,7 @@ func file_forex_v1_order_proto_rawDescGZIP() []byte {
 	return file_forex_v1_order_proto_rawDescData
 }
 
-var file_forex_v1_order_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
+var file_forex_v1_order_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
 var file_forex_v1_order_proto_goTypes = []any{
 	(*SubmitOrderRequest)(nil),           // 0: forex.v1.SubmitOrderRequest
 	(*SubmitOrderResponse)(nil),          // 1: forex.v1.SubmitOrderResponse
@@ -1170,26 +1418,36 @@ var file_forex_v1_order_proto_goTypes = []any{
 	(*PriceLevel)(nil),                   // 9: forex.v1.PriceLevel
 	(*SubscribeOrderEventsRequest)(nil),  // 10: forex.v1.SubscribeOrderEventsRequest
 	(*SubscribeOrderEventsResponse)(nil), // 11: forex.v1.SubscribeOrderEventsResponse
+	(*OrderKey)(nil),                     // 12: forex.v1.OrderKey
+	(*GetOrderStatusesRequest)(nil),      // 13: forex.v1.GetOrderStatusesRequest
+	(*OrderStatusInfo)(nil),              // 14: forex.v1.OrderStatusInfo
+	(*GetOrderStatusesResponse)(nil),     // 15: forex.v1.GetOrderStatusesResponse
+	(*TradeResponse)(nil),                // 16: forex.v1.TradeResponse
 }
 var file_forex_v1_order_proto_depIdxs = []int32{
 	6,  // 0: forex.v1.FilterClientOrdersResponse.orders:type_name -> forex.v1.OrderInfo
 	9,  // 1: forex.v1.GetOrderBookDepthResponse.bids:type_name -> forex.v1.PriceLevel
 	9,  // 2: forex.v1.GetOrderBookDepthResponse.asks:type_name -> forex.v1.PriceLevel
-	0,  // 3: forex.v1.OrderService.SubmitOrder:input_type -> forex.v1.SubmitOrderRequest
-	2,  // 4: forex.v1.OrderService.CancelOrder:input_type -> forex.v1.CancelOrderRequest
-	7,  // 5: forex.v1.OrderService.GetOrderBookDepth:input_type -> forex.v1.GetOrderBookDepthRequest
-	4,  // 6: forex.v1.OrderService.FilterClientOrders:input_type -> forex.v1.FilterClientOrdersRequest
-	10, // 7: forex.v1.OrderService.SubscribeOrderEvents:input_type -> forex.v1.SubscribeOrderEventsRequest
-	1,  // 8: forex.v1.OrderService.SubmitOrder:output_type -> forex.v1.SubmitOrderResponse
-	3,  // 9: forex.v1.OrderService.CancelOrder:output_type -> forex.v1.CancelOrderResponse
-	8,  // 10: forex.v1.OrderService.GetOrderBookDepth:output_type -> forex.v1.GetOrderBookDepthResponse
-	5,  // 11: forex.v1.OrderService.FilterClientOrders:output_type -> forex.v1.FilterClientOrdersResponse
-	11, // 12: forex.v1.OrderService.SubscribeOrderEvents:output_type -> forex.v1.SubscribeOrderEventsResponse
-	8,  // [8:13] is the sub-list for method output_type
-	3,  // [3:8] is the sub-list for method input_type
-	3,  // [3:3] is the sub-list for extension type_name
-	3,  // [3:3] is the sub-list for extension extendee
-	0,  // [0:3] is the sub-list for field type_name
+	12, // 3: forex.v1.GetOrderStatusesRequest.keys:type_name -> forex.v1.OrderKey
+	16, // 4: forex.v1.OrderStatusInfo.trades:type_name -> forex.v1.TradeResponse
+	14, // 5: forex.v1.GetOrderStatusesResponse.orders:type_name -> forex.v1.OrderStatusInfo
+	0,  // 6: forex.v1.OrderService.SubmitOrder:input_type -> forex.v1.SubmitOrderRequest
+	2,  // 7: forex.v1.OrderService.CancelOrder:input_type -> forex.v1.CancelOrderRequest
+	7,  // 8: forex.v1.OrderService.GetOrderBookDepth:input_type -> forex.v1.GetOrderBookDepthRequest
+	4,  // 9: forex.v1.OrderService.FilterClientOrders:input_type -> forex.v1.FilterClientOrdersRequest
+	10, // 10: forex.v1.OrderService.SubscribeOrderEvents:input_type -> forex.v1.SubscribeOrderEventsRequest
+	13, // 11: forex.v1.OrderService.GetOrderStatuses:input_type -> forex.v1.GetOrderStatusesRequest
+	1,  // 12: forex.v1.OrderService.SubmitOrder:output_type -> forex.v1.SubmitOrderResponse
+	3,  // 13: forex.v1.OrderService.CancelOrder:output_type -> forex.v1.CancelOrderResponse
+	8,  // 14: forex.v1.OrderService.GetOrderBookDepth:output_type -> forex.v1.GetOrderBookDepthResponse
+	5,  // 15: forex.v1.OrderService.FilterClientOrders:output_type -> forex.v1.FilterClientOrdersResponse
+	11, // 16: forex.v1.OrderService.SubscribeOrderEvents:output_type -> forex.v1.SubscribeOrderEventsResponse
+	15, // 17: forex.v1.OrderService.GetOrderStatuses:output_type -> forex.v1.GetOrderStatusesResponse
+	12, // [12:18] is the sub-list for method output_type
+	6,  // [6:12] is the sub-list for method input_type
+	6,  // [6:6] is the sub-list for extension type_name
+	6,  // [6:6] is the sub-list for extension extendee
+	0,  // [0:6] is the sub-list for field type_name
 }
 
 func init() { file_forex_v1_order_proto_init() }
@@ -1197,13 +1455,14 @@ func file_forex_v1_order_proto_init() {
 	if File_forex_v1_order_proto != nil {
 		return
 	}
+	file_forex_v1_trade_proto_init()
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_forex_v1_order_proto_rawDesc), len(file_forex_v1_order_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   12,
+			NumMessages:   16,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

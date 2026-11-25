@@ -168,18 +168,18 @@ func (c *Client) SubmitOrder(ctx context.Context, p *SubmitOrderParams) (*Submit
 	// 3. Reflect the Core's response into the local row.
 	orderStatus := OrderStatus(resp.GetStatus())
 
-	// A market order is filled (or cancelled) synchronously, so the response
-	// already carries the executed quantity and the weighted average rate. The
-	// individual trades still arrive on the trade stream, which owns the
-	// remaining_quantity decrement — only the status is written here, so the two
-	// paths never double-count the same fill.
+	// The response says only whether the order was accepted. Every outcome of
+	// matching — fills, a market order's cancelled remainder, expiry — reaches
+	// this SDK over the trade and order event streams, and from there the local
+	// row; a lost one is repaired by ReconcileOrders. So only a refusal is
+	// written here. Even a Core that still reports a fill in the response is not
+	// believed: writing that status here is what once left an order Filled
+	// locally with its trade missing and nothing to look for it.
 	result := &SubmitOrderResult{
-		RefId:          refId,
-		OrderId:        resp.GetOrderId(),
-		OrderDay:       orderDay,
-		Status:         orderStatus,
-		FilledQuantity: resp.GetFilledQuantity(),
-		AverageRate:    resp.GetAverageRate(),
+		RefId:    refId,
+		OrderId:  resp.GetOrderId(),
+		OrderDay: orderDay,
+		Status:   orderStatus,
 	}
 
 	// order_id is zero when the Core rejected the order before saving it, and
@@ -188,20 +188,20 @@ func (c *Client) SubmitOrder(ctx context.Context, p *SubmitOrderParams) (*Submit
 	switch orderStatus {
 	case Duplicate, Unknown:
 		return result, nil
-	case Pending:
-		// A resting order keeps the row's default status: the order event
-		// stream may already have moved it on, and writing Pending back here
-		// would undo that. Only the Core's order_id is recorded.
+	case Rejected, Failed:
+		// Not accepted: nothing will ever arrive on the streams for it.
+		cmd, err = c.db.Exec(ctx,
+			`UPDATE client_orders SET status = $1, cause = $2, order_id = NULLIF($3::bigint, 0), updated_at = NOW()
+			  WHERE ref_id = $4 AND order_day = $5`, orderStatus, resp.GetCause(), result.OrderId, refId, orderDay)
+	default:
+		// Accepted. The row keeps whatever status the streams have already
+		// given it; only the Core's order_id is recorded.
 		if result.OrderId == 0 {
 			return result, nil
 		}
 		cmd, err = c.db.Exec(ctx,
 			`UPDATE client_orders SET order_id = $1, updated_at = NOW()
 			  WHERE ref_id = $2 AND order_day = $3`, result.OrderId, refId, orderDay)
-	default:
-		cmd, err = c.db.Exec(ctx,
-			`UPDATE client_orders SET status = $1, cause = $2, order_id = NULLIF($3::bigint, 0), updated_at = NOW()
-			  WHERE ref_id = $4 AND order_day = $5`, orderStatus, resp.GetCause(), result.OrderId, refId, orderDay)
 	}
 	if err != nil {
 		log.Println("fx-sdk: submit order update: ", err)
@@ -395,19 +395,31 @@ func (c *Client) runOrderEventStream(ctx context.Context, partnerId string, hand
 
 		event := &OrderEvent{
 			RefId:             resp.GetRefId(),
+			OrderDay:          resp.GetOrderDay(),
 			EventType:         OrderStatus(resp.GetEventType()),
 			EventTimestamp:    resp.GetEventTimestamp(),
 			RemainingQuantity: resp.GetRemainingQuantity(),
 			PartnerId:         resp.GetPartnerId(),
 		}
 
-		// Order events don't carry order_day, so we fall back to ref_id-only
-		// lookup. The ref_id column is still unique (BIGSERIAL) across chunks;
-		// TimescaleDB just cannot prune partitions for this path.
+		// The Core sends order_day with every event. An older Core did not, and
+		// an update keyed on an empty day matched nothing, leaving an expired or
+		// cancelled order live here; ref_id alone is still unique (BIGSERIAL), it
+		// just cannot prune partitions, so it is the fallback for that case.
 		if resp.GetRefId() > 0 {
-			cmd, err := c.db.Exec(ctx,
-				`UPDATE client_orders SET status = $1, remaining_quantity = $2, updated_at = NOW() WHERE order_day = $3 AND ref_id = $4`,
-				event.EventType, event.RemainingQuantity, resp.GetOrderDay(), resp.GetRefId())
+			var (
+				cmd pgconn.CommandTag
+				err error
+			)
+			if day := resp.GetOrderDay(); day != "" {
+				cmd, err = c.db.Exec(ctx,
+					`UPDATE client_orders SET status = $1, remaining_quantity = $2, updated_at = NOW() WHERE order_day = $3 AND ref_id = $4`,
+					event.EventType, event.RemainingQuantity, day, resp.GetRefId())
+			} else {
+				cmd, err = c.db.Exec(ctx,
+					`UPDATE client_orders SET status = $1, remaining_quantity = $2, updated_at = NOW() WHERE ref_id = $3`,
+					event.EventType, event.RemainingQuantity, resp.GetRefId())
+			}
 			if err != nil {
 				log.Println("fx-sdk: update order status: ", err, " refID: ", resp.GetRefId(), " remainingQuantity: ", event.RemainingQuantity)
 			} else if cmd.RowsAffected() == 0 {

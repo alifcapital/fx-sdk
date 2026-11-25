@@ -50,7 +50,7 @@ func TestGetTradesRawWalksEveryPage(t *testing.T) {
 	core := &pagingCore{total: 2500, pageSize: 1000}
 	c := &Client{trade: core}
 
-	trades, err := c.getTradesRaw(context.Background(), "p1", "2026-11-11", "a", "b", true)
+	trades, err := c.getTradesRaw(context.Background(), "p1", "2026-11-11", "a", "b")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,7 +68,7 @@ func TestGetTradesRawWalksEveryPage(t *testing.T) {
 	// Every page repeats the window and asks for the Core's maximum page.
 	for i, req := range core.requests {
 		if req.GetPageSize() != tradesPageSize || req.GetTradingDay() != "2026-11-11" ||
-			req.GetPartnerId() != "p1" || !req.GetIsReconciliation() {
+			req.GetPartnerId() != "p1" {
 			t.Errorf("request %d = %v", i, req)
 		}
 	}
@@ -83,7 +83,7 @@ func TestGetTradesRawAgainstACoreWithoutPaging(t *testing.T) {
 	core := &pagingCore{total: 2500}
 	c := &Client{trade: core}
 
-	trades, err := c.getTradesRaw(context.Background(), "p1", "2026-11-11", "a", "b", false)
+	trades, err := c.getTradesRaw(context.Background(), "p1", "2026-11-11", "a", "b")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +98,7 @@ func TestGetTradesRawStopsWhenTheTokenDoesNotAdvance(t *testing.T) {
 	core := &pagingCore{total: 10, pageSize: 5, stuck: true}
 	c := &Client{trade: core}
 
-	trades, err := c.getTradesRaw(context.Background(), "p1", "2026-11-11", "a", "b", false)
+	trades, err := c.getTradesRaw(context.Background(), "p1", "2026-11-11", "a", "b")
 	if err == nil || !strings.Contains(err.Error(), "paging did not finish") {
 		t.Fatalf("err = %v, want a paging error", err)
 	}

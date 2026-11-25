@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/alifcapital/fx-sdk/go/forexv1"
+	"github.com/jackc/pgx/v5"
 )
 
 // SubscribeTrades opens the bidirectional TradeService stream and drives the
@@ -122,7 +123,7 @@ func (c *Client) runTradeStream(ctx context.Context, handler TradeEventHandler, 
 //
 // The handler's error is logged and recorded before it is returned, so callers
 // that only drive the trade forward — the stream and RetryUnsettled — can
-// ignore it; RecoverTrades uses it to count settlement outcomes.
+// ignore it.
 func (c *Client) settle(ctx context.Context, handler TradeEventHandler, event *TradeEvent) error {
 	if handler == nil {
 		c.markSettled(ctx, event)
@@ -230,6 +231,28 @@ func (c *Client) RetryUnsettled(ctx context.Context, handler TradeEventHandler) 
 // trade (false on a redelivery of a trade that was already present) and whether
 // the trade is already settled.
 func (c *Client) persistTrade(ctx context.Context, resp *forexv1.TradeResponse) (event *TradeEvent, inserted, settled bool, err error) {
+	// The trade insert and the parent-order update share one transaction, so
+	// the trades row and the orders row stay consistent if either fails.
+	tx, err := c.db.Begin(ctx)
+	if err != nil {
+		return nil, false, false, fmt.Errorf("begin trade tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	event, inserted, settled, err = persistTradeTx(ctx, tx, resp)
+	if err != nil {
+		return nil, false, false, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, false, false, fmt.Errorf("commit trade tx: %w", err)
+	}
+	return event, inserted, settled, nil
+}
+
+// persistTradeTx is persistTrade inside a transaction the caller owns and
+// commits, so ReconcileOrders can store an order's missing trades and correct
+// the order itself in one transaction.
+func persistTradeTx(ctx context.Context, tx pgx.Tx, resp *forexv1.TradeResponse) (event *TradeEvent, inserted, settled bool, err error) {
 	event = &TradeEvent{
 		PartnerId:      resp.GetPartnerId(),
 		TradeId:        resp.GetId(),
@@ -242,7 +265,7 @@ func (c *Client) persistTrade(ctx context.Context, resp *forexv1.TradeResponse) 
 		TradeType:      TradeType(resp.GetTradeType()),
 	}
 
-	if err := c.db.QueryRow(ctx,
+	if err := tx.QueryRow(ctx,
 		`SELECT client_id, side, currency_pair, account, fee FROM client_orders WHERE order_day = $1 AND ref_id = $2`,
 		resp.GetOrderDay(), resp.GetRefId(),
 	).Scan(&event.ClientId, &event.Side, &event.CurrencyPair, &event.Account, &event.FeeConfig); err != nil {
@@ -253,29 +276,17 @@ func (c *Client) persistTrade(ctx context.Context, resp *forexv1.TradeResponse) 
 		return nil, false, false, fmt.Errorf("compute fee: %w", err)
 	}
 	// executed_at must be the Core's execution time, never the moment this row
-	// was written. Reconcile compares an hourly window of client_trades against
-	// the Core's window over settlements.trade_date, which is exactly this
-	// value — a row stamped with NOW() lands in a different hour whenever
-	// storage lags the match, and always does for a trade pulled back hours or
-	// days later, so a repair could never make the hour reconcile.
+	// was written: a trade stored by ReconcileOrders a day later still belongs
+	// to the hour it was executed in.
 	//
 	// A value that will not parse falls back to the column default rather than
 	// rejecting the trade: storing it late is recoverable, dropping it is not.
-	// The hour may then diverge, which is the visible failure it should be.
 	var executedAt *time.Time
 	if t, perr := time.Parse(time.RFC3339, resp.GetExecutedAt()); perr == nil {
 		executedAt = &t
 	} else if resp.GetExecutedAt() != "" {
 		log.Printf("fx-sdk: unparsable executed_at %q trade_id=%d: %v\n", resp.GetExecutedAt(), event.TradeId, perr)
 	}
-
-	// Wrap the trade insert and parent-order update in a single transaction so
-	// the trades row and orders row stay consistent if either statement fails.
-	tx, err := c.db.Begin(ctx)
-	if err != nil {
-		return nil, false, false, fmt.Errorf("begin trade tx: %w", err)
-	}
-	defer tx.Rollback(ctx)
 
 	cmd, err := tx.Exec(ctx,
 		`INSERT INTO client_trades (executed_at, trading_day, trade_id, order_id, ref_id, side, filled_quantity,
@@ -298,47 +309,66 @@ func (c *Client) persistTrade(ctx context.Context, resp *forexv1.TradeResponse) 
 			event.TradingDay, event.TradeId, event.OrderId).Scan(&settled); err != nil {
 			return nil, false, false, fmt.Errorf("read settled state: %w", err)
 		}
-		if err := tx.Commit(ctx); err != nil {
-			return nil, false, false, fmt.Errorf("commit trade tx: %w", err)
-		}
 		return event, false, settled, nil
 	}
 
 	// First delivery: apply the parent-order decrement exactly once, guarded by
 	// the trade insert above.
+	//
+	// A trade moves an order only to FilledPartially, or to Filled with nothing
+	// left; closing statuses — expired, cancelled — come from order events. The
+	// trade's own order status is a snapshot taken when the trade was settled,
+	// which for a market order is already CancelledPartially, so taking it as
+	// it is would close the order on its first trade and skip the decrement of
+	// the next.
+	//
+	// An order already closed here is left alone: its status and remaining
+	// came from the Core (an order event, ReconcileOrders) or from the trade
+	// that filled it, and they account for this trade already. The event that
+	// cancels a market order's remainder is sent at once, while the trades go
+	// through settlement and arrive after it, so decrementing here would count
+	// every one of them twice.
 	cmd, err = tx.Exec(ctx,
-		`UPDATE client_orders SET status  = $1,
-		        remaining_quantity        = GREATEST(remaining_quantity - $2::numeric, 0),
-		        updated_at                = NOW()
+		`UPDATE client_orders
+		    SET status = CASE WHEN status IN ($5, $6, $7, $8, $9) THEN status
+		                      WHEN $1 = $5 THEN $5
+		                      ELSE $10 END,
+		        remaining_quantity = CASE WHEN status IN ($5, $6, $7, $8, $9) THEN remaining_quantity
+		                                  WHEN $1 = $5 THEN 0
+		                                  ELSE GREATEST(remaining_quantity - $2::numeric, 0) END,
+		        updated_at = NOW()
 		  WHERE order_day = $3 AND ref_id = $4`,
-		event.OrderStatus, event.FilledQuantity, resp.GetOrderDay(), resp.GetRefId())
+		int16(event.OrderStatus), event.FilledQuantity, resp.GetOrderDay(), resp.GetRefId(),
+		int16(Filled), int16(Cancelled), int16(Expired), int16(CancelledPartially), int16(ExpiredPartially),
+		int16(FilledPartially))
 	if err != nil {
 		return nil, false, false, fmt.Errorf("update order: %w", err)
 	}
 	if cmd.RowsAffected() != 1 {
 		return nil, false, false, fmt.Errorf("expected 1 row affected, got %d", cmd.RowsAffected())
 	}
-
-	if err := tx.Commit(ctx); err != nil {
-		return nil, false, false, fmt.Errorf("commit trade tx: %w", err)
-	}
-
 	return event, true, false, nil
 }
+
+const (
+	// dayLayout is the YYYY-MM-DD form used for every date on the wire and in
+	// the local tables.
+	dayLayout = "2006-01-02"
+	// timestampLayout is the form the Core expects for the dt_from / dt_to
+	// bounds of a GetTrades window.
+	timestampLayout = "2006-01-02 15:04:05"
+)
 
 // GetTrades returns the trades the Core recorded for the partner in a time
 // window. It is a read-only query against the Core's own books — unlike the
 // trade stream it stores nothing, acks nothing and settles nothing, so it is
 // safe to call at any time.
 //
-// It exists for the reconciliation drill-down: when Reconcile reports a
-// mismatched hour, the checksum says only that the two sides disagree, and this
-// is how the partner obtains the Core's trade list to compare against its own.
-// ReconcileDiff does that comparison; call GetTrades directly when you want the
-// raw list, e.g. over a whole day.
+// Use it to read the Core's trade list, e.g. over a whole day, for reports or a
+// manual check against client_trades.
 //
 // DtFrom and DtTo default to the full Day when left empty. The bounds are
-// interpreted by the Core in its own timezone, the same as for Reconcile.
+// interpreted by the Core in its own timezone (UTC+05:00).
 func (c *Client) GetTrades(ctx context.Context, p *GetTradesParams) ([]Trade, error) {
 	if p == nil || p.PartnerId == "" {
 		return nil, ErrPartnerIDRequired
@@ -355,37 +385,21 @@ func (c *Client) GetTrades(ctx context.Context, p *GetTradesParams) ([]Trade, er
 		dtTo = day.AddDate(0, 0, 1).Format(timestampLayout)
 	}
 
-	raw, err := c.getTradesRaw(ctx, p.PartnerId, p.Day, dtFrom, dtTo, false)
+	raw, err := c.getTradesRaw(ctx, p.PartnerId, p.Day, dtFrom, dtTo)
 	if err != nil {
 		return nil, err
 	}
 	return toTrades(raw), nil
 }
 
-// getTradesRaw performs the GetTrades call and returns the Core's messages
-// untouched. RecoverTrades and ReconcileRepair feed them straight back into
-// persistTrade, the same entry point the stream uses, so a pulled trade takes
-// exactly the same code path as a pushed one.
-//
-// reconcile picks which set of trades the Core returns, and the two are not
-// interchangeable:
-//
-//   - false — the trades of partnerId. This is a partner reading its own books:
-//     RecoverTrades catching up after downtime, or a caller of GetTrades.
-//   - true — everything the authenticated SDK key traded, whatever partner each
-//     trade belongs to. This is the scope Reconciliation computes its checksum
-//     over, so it is the only scope in which a drill-down or a repair explains
-//     the checksum it is drilling into. For a key that serves one partner the
-//     two sets are identical; for one that serves several, a partner-scoped
-//     read would return a fraction of what the checksum covered and the repair
-//     would keep "fixing" an hour that never converges.
+// getTradesRaw performs the GetTrades call for partnerId's own trades and
+// returns the Core's messages untouched.
 //
 // The window is read a page at a time and returned whole. One response used to
-// carry all of it, and a busy day did not fit into a single gRPC message: the
-// call failed on exactly the partners with the most to reconcile. A Core that
+// carry all of it, and a busy day did not fit into a single gRPC message. A Core that
 // predates paging ignores the page fields and answers with everything and no
 // token, which ends the loop after one round, so this works against either.
-func (c *Client) getTradesRaw(ctx context.Context, partnerId, day, dtFrom, dtTo string, reconcile bool) ([]*forexv1.TradeResponse, error) {
+func (c *Client) getTradesRaw(ctx context.Context, partnerId, day, dtFrom, dtTo string) ([]*forexv1.TradeResponse, error) {
 	var (
 		trades []*forexv1.TradeResponse
 		token  string
@@ -393,12 +407,11 @@ func (c *Client) getTradesRaw(ctx context.Context, partnerId, day, dtFrom, dtTo 
 	pageSize := int32(tradesPageSize)
 	for page := 0; ; page++ {
 		req := &forexv1.GetTradesRequest{
-			TradingDay:       &day,
-			DtFrom:           &dtFrom,
-			DtTo:             &dtTo,
-			PartnerId:        &partnerId,
-			IsReconciliation: &reconcile,
-			PageSize:         &pageSize,
+			TradingDay: &day,
+			DtFrom:     &dtFrom,
+			DtTo:       &dtTo,
+			PartnerId:  &partnerId,
+			PageSize:   &pageSize,
 		}
 		if token != "" {
 			req.PageToken = &token

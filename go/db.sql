@@ -52,10 +52,10 @@ CREATE TABLE client_orders (
 
 CREATE TABLE client_trades (
     -- The Core's execution time for this fill, written from the trade event --
-    -- NOT the moment the row was stored. Reconciliation compares an hourly
-    -- window of this column against the Core's own trade_date, so the two
-    -- must be the same instant. The default only applies if the Core sent a
-    -- value that could not be parsed.
+    -- NOT the moment the row was stored, so a trade stored late still sits in
+    -- the hour it was executed in, the same instant as the Core's trade_date.
+    -- The default only applies if the Core sent a value that could not be
+    -- parsed.
     executed_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     trading_day           DATE NOT NULL, -- core trade day
@@ -92,45 +92,11 @@ CREATE INDEX client_trades_unsettled ON client_trades (trading_day) WHERE NOT se
 -- SELECT add_retention_policy('client_orders', INTERVAL '6 months');
 
 
-CREATE TABLE reconciliations (
-    dt DATE NOT NULL,
-    hour SMALLINT NOT NULL,
-    is_matched BOOLEAN NOT NULL, -- If hash_check match
-    info JSONB,
-    is_done BOOLEAN NOT NULL,
-    PRIMARY KEY (hour, dt)
-) WITH (
-    tsdb.hypertable,
-    tsdb.partition_column = 'dt',
-    tsdb.segmentby        = 'hour',
-    tsdb.orderby          = 'dt DESC'
-);
--- The hourly checksum below is what v1.Reconcile issues; it lives in
--- go/v1/reconcile.go and is reproduced here only as documentation. Keep the two
--- in sync — the Core computes the same expression over its own trades, so any
--- change to it must be made on both sides.
+-- The reconciliations table of earlier versions is no longer used: hourly
+-- trade reconciliation was replaced by ReconcileOrders. An existing database
+-- may drop it:
 --
--- Every stored trade contributes, settled or not. The checksum answers one
--- question — do client_trades and the Core's settlements hold the same set of
--- trades — and the settled flag is local bookkeeping the Core knows nothing
--- about, so filtering on it would report a divergence where the data is in
--- fact identical. Unsettled trades are re-run by RetryUnsettled instead.
---
--- There is no partner_id filter either, and that is deliberate. The Core scopes
--- its half of the checksum by the authenticated sdk_id, so the local half must
--- cover everything this SDK stored. For the usual one-key-one-partner setup the
--- two are the same rows; adding the filter would only break a key that trades
--- for several partners.
---
--- The bounds are UTC+05:00 wall clock, which is the form the Core is sent and
--- compares in. executed_at is TIMESTAMPTZ, so they must be anchored rather than
--- left to the session timezone.
---
--- SELECT bit_xor(hashint8(trade_id) # hashint8(order_id)) AS hash_check
--- FROM client_trades
--- WHERE trading_day = '2026-04-30'
---   AND executed_at >= TIMESTAMP '2026-04-30 10:00:00' AT TIME ZONE INTERVAL '+05:00'
---   AND executed_at <  TIMESTAMP '2026-04-30 11:00:00' AT TIME ZONE INTERVAL '+05:00';
+-- DROP TABLE IF EXISTS reconciliations;
 
 -- Migration for a database created before the offset was pinned. Existing rows
 -- are left alone: order_day was written from the session's CURRENT_DATE, and

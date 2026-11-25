@@ -221,168 +221,27 @@ func (x *TradeRequest) GetPartnerId() string {
 	return ""
 }
 
-type ReconciliationRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	TradingDay    *string                `protobuf:"bytes,1,opt,name=trading_day,json=tradingDay" json:"trading_day,omitempty"`
-	DtFrom        *string                `protobuf:"bytes,2,opt,name=dt_from,json=dtFrom" json:"dt_from,omitempty"`
-	DtTo          *string                `protobuf:"bytes,3,opt,name=dt_to,json=dtTo" json:"dt_to,omitempty"`
-	PartnerId     *string                `protobuf:"bytes,4,opt,name=partner_id,json=partnerId" json:"partner_id,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *ReconciliationRequest) Reset() {
-	*x = ReconciliationRequest{}
-	mi := &file_forex_v1_trade_proto_msgTypes[2]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *ReconciliationRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*ReconciliationRequest) ProtoMessage() {}
-
-func (x *ReconciliationRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_forex_v1_trade_proto_msgTypes[2]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use ReconciliationRequest.ProtoReflect.Descriptor instead.
-func (*ReconciliationRequest) Descriptor() ([]byte, []int) {
-	return file_forex_v1_trade_proto_rawDescGZIP(), []int{2}
-}
-
-func (x *ReconciliationRequest) GetTradingDay() string {
-	if x != nil && x.TradingDay != nil {
-		return *x.TradingDay
-	}
-	return ""
-}
-
-func (x *ReconciliationRequest) GetDtFrom() string {
-	if x != nil && x.DtFrom != nil {
-		return *x.DtFrom
-	}
-	return ""
-}
-
-func (x *ReconciliationRequest) GetDtTo() string {
-	if x != nil && x.DtTo != nil {
-		return *x.DtTo
-	}
-	return ""
-}
-
-func (x *ReconciliationRequest) GetPartnerId() string {
-	if x != nil && x.PartnerId != nil {
-		return *x.PartnerId
-	}
-	return ""
-}
-
-type ReconciliationResponse struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// hash_check is the original fingerprint: bit_xor(hashint8(trade_id) #
-	// hashint8(order_id)). It is kept only so SDK versions predating hash_v2
-	// keep working, and it is unsound — a row whose trade_id equals its order_id
-	// contributes zero and is therefore invisible, and any two rows with equal
-	// contributions cancel out. Compare hash_v2 and trade_count instead, and
-	// treat hash_check as deprecated.
-	HashCheck *int64 `protobuf:"varint,1,opt,name=hash_check,json=hashCheck" json:"hash_check,omitempty"`
-	// hash_v2 hashes the whole settlement tuple — both ids, the side, the amount
-	// and the rate — so a missing row cannot contribute nothing, and a row whose
-	// values differ between the two sides is a mismatch rather than a match.
-	HashV2 *int64 `protobuf:"varint,2,opt,name=hash_v2,json=hashV2" json:"hash_v2,omitempty"`
-	// trade_count is the number of rows the hash covers. An empty window and a
-	// window whose contributions cancel both hash to zero; only the count tells
-	// them apart.
-	TradeCount    *int64 `protobuf:"varint,3,opt,name=trade_count,json=tradeCount" json:"trade_count,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *ReconciliationResponse) Reset() {
-	*x = ReconciliationResponse{}
-	mi := &file_forex_v1_trade_proto_msgTypes[3]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *ReconciliationResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*ReconciliationResponse) ProtoMessage() {}
-
-func (x *ReconciliationResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_forex_v1_trade_proto_msgTypes[3]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use ReconciliationResponse.ProtoReflect.Descriptor instead.
-func (*ReconciliationResponse) Descriptor() ([]byte, []int) {
-	return file_forex_v1_trade_proto_rawDescGZIP(), []int{3}
-}
-
-func (x *ReconciliationResponse) GetHashCheck() int64 {
-	if x != nil && x.HashCheck != nil {
-		return *x.HashCheck
-	}
-	return 0
-}
-
-func (x *ReconciliationResponse) GetHashV2() int64 {
-	if x != nil && x.HashV2 != nil {
-		return *x.HashV2
-	}
-	return 0
-}
-
-func (x *ReconciliationResponse) GetTradeCount() int64 {
-	if x != nil && x.TradeCount != nil {
-		return *x.TradeCount
-	}
-	return 0
-}
-
 type GetTradesRequest struct {
-	state            protoimpl.MessageState `protogen:"open.v1"`
-	TradingDay       *string                `protobuf:"bytes,1,opt,name=trading_day,json=tradingDay" json:"trading_day,omitempty"`
-	DtFrom           *string                `protobuf:"bytes,2,opt,name=dt_from,json=dtFrom" json:"dt_from,omitempty"`
-	DtTo             *string                `protobuf:"bytes,3,opt,name=dt_to,json=dtTo" json:"dt_to,omitempty"`
-	PartnerId        *string                `protobuf:"bytes,4,opt,name=partner_id,json=partnerId" json:"partner_id,omitempty"`
-	IsReconciliation *bool                  `protobuf:"varint,5,opt,name=is_reconciliation,json=isReconciliation" json:"is_reconciliation,omitempty"`
+	state      protoimpl.MessageState `protogen:"open.v1"`
+	TradingDay *string                `protobuf:"bytes,1,opt,name=trading_day,json=tradingDay" json:"trading_day,omitempty"`
+	DtFrom     *string                `protobuf:"bytes,2,opt,name=dt_from,json=dtFrom" json:"dt_from,omitempty"`
+	DtTo       *string                `protobuf:"bytes,3,opt,name=dt_to,json=dtTo" json:"dt_to,omitempty"`
+	PartnerId  *string                `protobuf:"bytes,4,opt,name=partner_id,json=partnerId" json:"partner_id,omitempty"`
 	// page_size asks for the window one page at a time: at most this many trades
 	// per response, capped at 1000. Leave it and page_token unset to get the
 	// whole window in one response, which is refused with RESOURCE_EXHAUSTED once
 	// the window holds more than 20000 trades — page it, or narrow it.
-	PageSize *int32 `protobuf:"varint,6,opt,name=page_size,json=pageSize" json:"page_size,omitempty"`
+	PageSize *int32 `protobuf:"varint,5,opt,name=page_size,json=pageSize" json:"page_size,omitempty"`
 	// page_token continues a paged read: pass next_page_token from the previous
 	// response, with every other field unchanged. It is opaque.
-	PageToken     *string `protobuf:"bytes,7,opt,name=page_token,json=pageToken" json:"page_token,omitempty"`
+	PageToken     *string `protobuf:"bytes,6,opt,name=page_token,json=pageToken" json:"page_token,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *GetTradesRequest) Reset() {
 	*x = GetTradesRequest{}
-	mi := &file_forex_v1_trade_proto_msgTypes[4]
+	mi := &file_forex_v1_trade_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -394,7 +253,7 @@ func (x *GetTradesRequest) String() string {
 func (*GetTradesRequest) ProtoMessage() {}
 
 func (x *GetTradesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_forex_v1_trade_proto_msgTypes[4]
+	mi := &file_forex_v1_trade_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -407,7 +266,7 @@ func (x *GetTradesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetTradesRequest.ProtoReflect.Descriptor instead.
 func (*GetTradesRequest) Descriptor() ([]byte, []int) {
-	return file_forex_v1_trade_proto_rawDescGZIP(), []int{4}
+	return file_forex_v1_trade_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *GetTradesRequest) GetTradingDay() string {
@@ -438,13 +297,6 @@ func (x *GetTradesRequest) GetPartnerId() string {
 	return ""
 }
 
-func (x *GetTradesRequest) GetIsReconciliation() bool {
-	if x != nil && x.IsReconciliation != nil {
-		return *x.IsReconciliation
-	}
-	return false
-}
-
 func (x *GetTradesRequest) GetPageSize() int32 {
 	if x != nil && x.PageSize != nil {
 		return *x.PageSize
@@ -471,7 +323,7 @@ type GetTradesResponse struct {
 
 func (x *GetTradesResponse) Reset() {
 	*x = GetTradesResponse{}
-	mi := &file_forex_v1_trade_proto_msgTypes[5]
+	mi := &file_forex_v1_trade_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -483,7 +335,7 @@ func (x *GetTradesResponse) String() string {
 func (*GetTradesResponse) ProtoMessage() {}
 
 func (x *GetTradesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_forex_v1_trade_proto_msgTypes[5]
+	mi := &file_forex_v1_trade_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -496,7 +348,7 @@ func (x *GetTradesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetTradesResponse.ProtoReflect.Descriptor instead.
 func (*GetTradesResponse) Descriptor() ([]byte, []int) {
-	return file_forex_v1_trade_proto_rawDescGZIP(), []int{5}
+	return file_forex_v1_trade_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *GetTradesResponse) GetTrades() []*TradeResponse {
@@ -542,37 +394,22 @@ const file_forex_v1_trade_proto_rawDesc = "" +
 	"\vtrading_day\x18\x03 \x01(\tR\n" +
 	"tradingDay\x12\x1d\n" +
 	"\n" +
-	"partner_id\x18\x04 \x01(\tR\tpartnerId\"\x85\x01\n" +
-	"\x15ReconciliationRequest\x12\x1f\n" +
-	"\vtrading_day\x18\x01 \x01(\tR\n" +
-	"tradingDay\x12\x17\n" +
-	"\adt_from\x18\x02 \x01(\tR\x06dtFrom\x12\x13\n" +
-	"\x05dt_to\x18\x03 \x01(\tR\x04dtTo\x12\x1d\n" +
-	"\n" +
-	"partner_id\x18\x04 \x01(\tR\tpartnerId\"q\n" +
-	"\x16ReconciliationResponse\x12\x1d\n" +
-	"\n" +
-	"hash_check\x18\x01 \x01(\x03R\thashCheck\x12\x17\n" +
-	"\ahash_v2\x18\x02 \x01(\x03R\x06hashV2\x12\x1f\n" +
-	"\vtrade_count\x18\x03 \x01(\x03R\n" +
-	"tradeCount\"\xe9\x01\n" +
+	"partner_id\x18\x04 \x01(\tR\tpartnerId\"\xbc\x01\n" +
 	"\x10GetTradesRequest\x12\x1f\n" +
 	"\vtrading_day\x18\x01 \x01(\tR\n" +
 	"tradingDay\x12\x17\n" +
 	"\adt_from\x18\x02 \x01(\tR\x06dtFrom\x12\x13\n" +
 	"\x05dt_to\x18\x03 \x01(\tR\x04dtTo\x12\x1d\n" +
 	"\n" +
-	"partner_id\x18\x04 \x01(\tR\tpartnerId\x12+\n" +
-	"\x11is_reconciliation\x18\x05 \x01(\bR\x10isReconciliation\x12\x1b\n" +
-	"\tpage_size\x18\x06 \x01(\x05R\bpageSize\x12\x1d\n" +
+	"partner_id\x18\x04 \x01(\tR\tpartnerId\x12\x1b\n" +
+	"\tpage_size\x18\x05 \x01(\x05R\bpageSize\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\a \x01(\tR\tpageToken\"l\n" +
+	"page_token\x18\x06 \x01(\tR\tpageToken\"l\n" +
 	"\x11GetTradesResponse\x12/\n" +
 	"\x06trades\x18\x01 \x03(\v2\x17.forex.v1.TradeResponseR\x06trades\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\xe7\x01\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\x92\x01\n" +
 	"\fTradeService\x12<\n" +
-	"\x05Trade\x12\x16.forex.v1.TradeRequest\x1a\x17.forex.v1.TradeResponse(\x010\x01\x12S\n" +
-	"\x0eReconciliation\x12\x1f.forex.v1.ReconciliationRequest\x1a .forex.v1.ReconciliationResponse\x12D\n" +
+	"\x05Trade\x12\x16.forex.v1.TradeRequest\x1a\x17.forex.v1.TradeResponse(\x010\x01\x12D\n" +
 	"\tGetTrades\x12\x1a.forex.v1.GetTradesRequest\x1a\x1b.forex.v1.GetTradesResponseB\x8d\x01\n" +
 	"\fcom.forex.v1B\n" +
 	"TradeProtoP\x01Z0github.com/alifcapital/fx/proto/forex/v1;forexv1\xa2\x02\x03FXX\xaa\x02\bForex.V1\xca\x02\bForex\\V1\xe2\x02\x14Forex\\V1\\GPBMetadata\xea\x02\tForex::V1b\beditionsp\xe8\a"
@@ -589,25 +426,21 @@ func file_forex_v1_trade_proto_rawDescGZIP() []byte {
 	return file_forex_v1_trade_proto_rawDescData
 }
 
-var file_forex_v1_trade_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
+var file_forex_v1_trade_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
 var file_forex_v1_trade_proto_goTypes = []any{
-	(*TradeResponse)(nil),          // 0: forex.v1.TradeResponse
-	(*TradeRequest)(nil),           // 1: forex.v1.TradeRequest
-	(*ReconciliationRequest)(nil),  // 2: forex.v1.ReconciliationRequest
-	(*ReconciliationResponse)(nil), // 3: forex.v1.ReconciliationResponse
-	(*GetTradesRequest)(nil),       // 4: forex.v1.GetTradesRequest
-	(*GetTradesResponse)(nil),      // 5: forex.v1.GetTradesResponse
+	(*TradeResponse)(nil),     // 0: forex.v1.TradeResponse
+	(*TradeRequest)(nil),      // 1: forex.v1.TradeRequest
+	(*GetTradesRequest)(nil),  // 2: forex.v1.GetTradesRequest
+	(*GetTradesResponse)(nil), // 3: forex.v1.GetTradesResponse
 }
 var file_forex_v1_trade_proto_depIdxs = []int32{
 	0, // 0: forex.v1.GetTradesResponse.trades:type_name -> forex.v1.TradeResponse
 	1, // 1: forex.v1.TradeService.Trade:input_type -> forex.v1.TradeRequest
-	2, // 2: forex.v1.TradeService.Reconciliation:input_type -> forex.v1.ReconciliationRequest
-	4, // 3: forex.v1.TradeService.GetTrades:input_type -> forex.v1.GetTradesRequest
-	0, // 4: forex.v1.TradeService.Trade:output_type -> forex.v1.TradeResponse
-	3, // 5: forex.v1.TradeService.Reconciliation:output_type -> forex.v1.ReconciliationResponse
-	5, // 6: forex.v1.TradeService.GetTrades:output_type -> forex.v1.GetTradesResponse
-	4, // [4:7] is the sub-list for method output_type
-	1, // [1:4] is the sub-list for method input_type
+	2, // 2: forex.v1.TradeService.GetTrades:input_type -> forex.v1.GetTradesRequest
+	0, // 3: forex.v1.TradeService.Trade:output_type -> forex.v1.TradeResponse
+	3, // 4: forex.v1.TradeService.GetTrades:output_type -> forex.v1.GetTradesResponse
+	3, // [3:5] is the sub-list for method output_type
+	1, // [1:3] is the sub-list for method input_type
 	1, // [1:1] is the sub-list for extension type_name
 	1, // [1:1] is the sub-list for extension extendee
 	0, // [0:1] is the sub-list for field type_name
@@ -624,7 +457,7 @@ func file_forex_v1_trade_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_forex_v1_trade_proto_rawDesc), len(file_forex_v1_trade_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   6,
+			NumMessages:   4,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

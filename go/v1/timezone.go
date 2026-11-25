@@ -8,13 +8,10 @@ import "time"
 // the host machine or the PostgreSQL session. The Core is the authority here —
 // this offset is not a local preference and must not be made configurable.
 //
-// This is not cosmetic. Reconciliation compares a checksum over a one-hour
-// window of local trades against the Core's checksum over the same window, and
-// the two sides only agree if they mean the same hour. Left to the session
-// timezone, a partner whose database runs in UTC would ask for a window five
-// hours off the one the Core computes and every hour would "diverge"; the same
-// drift moves client_orders.order_day onto the wrong calendar day around
-// midnight, which then breaks the order lookup a trade is joined through.
+// This is not cosmetic. Left to the session timezone, a partner whose database
+// runs in UTC would file client_orders.order_day on the wrong calendar day
+// around midnight, which then breaks the order lookup a trade is joined
+// through, and would ask GetTrades for a window five hours off the one meant.
 //
 // So the offset is fixed in two places that must agree:
 //
@@ -37,7 +34,7 @@ const (
 	// string form. PostgreSQL reads AT TIME ZONE '+05' with the POSIX sign
 	// convention, which is inverted: for a 10:00 wall clock it yields 15:00Z,
 	// where INTERVAL '+05:00' correctly yields 05:00Z. Getting this backwards
-	// shifts every reconciliation window by ten hours, silently.
+	// shifts every anchored timestamp by ten hours, silently.
 	atTZ = `AT TIME ZONE INTERVAL '+05:00'`
 )
 
@@ -62,21 +59,13 @@ func today(now time.Time) string {
 }
 
 // PreviousHour returns the day and hour of the last *completed* hour in the SDK
-// timezone. It is the slot to hand Reconcile and ReconcileRepair, which must
-// run against a closed hour rather than the one still in progress:
-//
-//	day, hour := v1.PreviousHour()
-//	res, err := c.ReconcileRepair(ctx, &v1.ReconcileParams{
-//		PartnerId: partnerId, Day: day, Hour: hour,
-//	}, handleTrade)
-//
-// It also rolls the day back correctly: at 00:30 on the 5th it returns hour 23
+// timezone. It also rolls the day back correctly: at 00:30 on the 5th it returns hour 23
 // of the 4th, not hour 23 of the 5th.
 func PreviousHour() (day string, hour int) {
 	return previousHour(time.Now())
 }
 
 func previousHour(now time.Time) (day string, hour int) {
-	t := now.In(TimeZone).Add(-reconcileWindow)
+	t := now.In(TimeZone).Add(-time.Hour)
 	return t.Format(dayLayout), t.Hour()
 }

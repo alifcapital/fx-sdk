@@ -73,19 +73,6 @@ func TestTodayAndPreviousHour(t *testing.T) {
 	}
 }
 
-// PreviousHour must always hand Reconcile parameters it accepts.
-func TestPreviousHourIsAValidWindow(t *testing.T) {
-	day, hour := PreviousHour()
-	p := &ReconcileParams{PartnerId: "p1", Day: day, Hour: hour}
-	from, to, err := p.window()
-	if err != nil {
-		t.Fatalf("window() for PreviousHour() = %v", err)
-	}
-	if from == "" || to == "" || from >= to {
-		t.Fatalf("window() = [%q, %q), want an ordered non-empty range", from, to)
-	}
-}
-
 // The SQL anchor must stay the INTERVAL form: PostgreSQL reads the bare string
 // '+05' with the inverted POSIX sign convention.
 func TestAtTZUsesIntervalForm(t *testing.T) {

@@ -19,9 +19,8 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	TradeService_Trade_FullMethodName          = "/forex.v1.TradeService/Trade"
-	TradeService_Reconciliation_FullMethodName = "/forex.v1.TradeService/Reconciliation"
-	TradeService_GetTrades_FullMethodName      = "/forex.v1.TradeService/GetTrades"
+	TradeService_Trade_FullMethodName     = "/forex.v1.TradeService/Trade"
+	TradeService_GetTrades_FullMethodName = "/forex.v1.TradeService/GetTrades"
 )
 
 // TradeServiceClient is the client API for TradeService service.
@@ -29,7 +28,6 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type TradeServiceClient interface {
 	Trade(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[TradeRequest, TradeResponse], error)
-	Reconciliation(ctx context.Context, in *ReconciliationRequest, opts ...grpc.CallOption) (*ReconciliationResponse, error)
 	GetTrades(ctx context.Context, in *GetTradesRequest, opts ...grpc.CallOption) (*GetTradesResponse, error)
 }
 
@@ -54,16 +52,6 @@ func (c *tradeServiceClient) Trade(ctx context.Context, opts ...grpc.CallOption)
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type TradeService_TradeClient = grpc.BidiStreamingClient[TradeRequest, TradeResponse]
 
-func (c *tradeServiceClient) Reconciliation(ctx context.Context, in *ReconciliationRequest, opts ...grpc.CallOption) (*ReconciliationResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(ReconciliationResponse)
-	err := c.cc.Invoke(ctx, TradeService_Reconciliation_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 func (c *tradeServiceClient) GetTrades(ctx context.Context, in *GetTradesRequest, opts ...grpc.CallOption) (*GetTradesResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetTradesResponse)
@@ -79,7 +67,6 @@ func (c *tradeServiceClient) GetTrades(ctx context.Context, in *GetTradesRequest
 // for forward compatibility.
 type TradeServiceServer interface {
 	Trade(grpc.BidiStreamingServer[TradeRequest, TradeResponse]) error
-	Reconciliation(context.Context, *ReconciliationRequest) (*ReconciliationResponse, error)
 	GetTrades(context.Context, *GetTradesRequest) (*GetTradesResponse, error)
 	mustEmbedUnimplementedTradeServiceServer()
 }
@@ -93,9 +80,6 @@ type UnimplementedTradeServiceServer struct{}
 
 func (UnimplementedTradeServiceServer) Trade(grpc.BidiStreamingServer[TradeRequest, TradeResponse]) error {
 	return status.Error(codes.Unimplemented, "method Trade not implemented")
-}
-func (UnimplementedTradeServiceServer) Reconciliation(context.Context, *ReconciliationRequest) (*ReconciliationResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method Reconciliation not implemented")
 }
 func (UnimplementedTradeServiceServer) GetTrades(context.Context, *GetTradesRequest) (*GetTradesResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetTrades not implemented")
@@ -128,24 +112,6 @@ func _TradeService_Trade_Handler(srv interface{}, stream grpc.ServerStream) erro
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type TradeService_TradeServer = grpc.BidiStreamingServer[TradeRequest, TradeResponse]
 
-func _TradeService_Reconciliation_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ReconciliationRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(TradeServiceServer).Reconciliation(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: TradeService_Reconciliation_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(TradeServiceServer).Reconciliation(ctx, req.(*ReconciliationRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 func _TradeService_GetTrades_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetTradesRequest)
 	if err := dec(in); err != nil {
@@ -171,10 +137,6 @@ var TradeService_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "forex.v1.TradeService",
 	HandlerType: (*TradeServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
-		{
-			MethodName: "Reconciliation",
-			Handler:    _TradeService_Reconciliation_Handler,
-		},
 		{
 			MethodName: "GetTrades",
 			Handler:    _TradeService_GetTrades_Handler,
