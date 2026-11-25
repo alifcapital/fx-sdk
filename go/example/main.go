@@ -165,77 +165,35 @@ func main() {
 			}
 		}
 	})
-	// 0c-bis. Сверяем завершённые часы с Core: при старте — каждый уже закрытый
-	// час текущего дня, затем через несколько минут после каждого часа — только
-	// что закрывшийся. При расхождении SDK забирает сделки Core за то же окно,
-	// сохраняет локально всё недостающее и вызывает для него handleTrade, затем
-	// проверяет повторно. Всё, что после этого всё ещё расходится, требует
-	// участия человека — ReconcileDiff покажет, какие сделки разошлись.
+	// 0c-bis. Сверка с Core — одна, по ордерам: при старте и раз в час. Берёт
+	// ордера, поданные больше 25 часов назад, которые у нас всё ещё Pending или
+	// FilledPartially, или уже закрыты, но сделок у них меньше, чем исполнено.
+	// Спрашивает Core, чем они закончились: недостающие сделки сохраняет и
+	// передаёт в handleTrade (проводка денег), закрывает ордер статусом Core и,
+	// если остаток надо вернуть, вызывает handleOrderEvent — тот же
+	// обработчик, что у стрима событий.
 	g.Go(func() error {
-		reconcileHour := func(day string, hour int) {
-			params := &v1.ReconcileParams{
-				PartnerId: *partnerId,
-				Day:       day,
-				Hour:      hour,
-			}
-			res, err := client.ReconcileRepair(ctx, params, handleTrade)
+		reconcile := func() {
+			res, err := client.ReconcileOrders(ctx, &v1.ReconcileOrdersParams{PartnerId: *partnerId},
+				handleTrade, handleOrderEvent)
 			if err != nil {
-				log.Printf("reconcile repair %s h%02d: %v", params.Day, params.Hour, err)
+				log.Printf("reconcile orders: %v", err)
 				return
 			}
-			if res.Resolved() {
-				log.Printf("reconciled %s h%02d: recovered=%d settled=%d",
-					params.Day, params.Hour, res.Recovered, res.Settled)
-				return
-			}
-			log.Printf("reconcile %s h%02d STILL MISMATCHED: core=%d recovered=%d settled=%d settle_failed=%d failed=%d",
-				params.Day, params.Hour, res.CoreTrades, res.Recovered,
-				res.Settled, res.SettleFailed, res.Failed)
-			diff, derr := client.ReconcileDiff(ctx, params)
-			if derr != nil {
-				log.Printf("reconcile diff %s h%02d: %v", params.Day, params.Hour, derr)
-				return
-			}
-			log.Printf("  missing_locally=%d missing_remotely=%d mismatched=%d unsettled=%d",
-				len(diff.MissingLocally), len(diff.MissingRemotely),
-				len(diff.Mismatched), len(diff.Unsettled))
-		}
-
-		// Догоняем при старте, начиная с 00:00. Процесс, простоявший шесть часов,
-		// оставляет шесть несверенных слотов, а не один, поэтому одного
-		// почасового тика было бы мало — в таблице reconciliations остались бы
-		// постоянные дыры. Каждый час записывается через upsert по (dt, hour),
-		// так что повторный проход по уже записанным часам дёшев и идемпотентен —
-		// совпавший час просто совпадёт снова.
-		//
-		// PreviousHour — последний завершённый час в часовом поясе SDK
-		// (UTC+05:00). Не выводите его из часов хоста: Core сравнивает час в +05,
-		// поэтому хост в другом поясе спросил бы про не то окно. Сразу после
-		// полуночи он относится ко вчера, а у сегодняшнего дня ещё нет
-		// завершённого часа, так что делать нужно только этот единственный час.
-		day, hour := v1.PreviousHour()
-		if day == v1.Today() {
-			for h := range hour {
-				if ctx.Err() != nil {
-					return ctx.Err()
-				}
-				reconcileHour(day, h)
+			if res.Checked > 0 {
+				log.Printf("reconciled orders: checked=%d trades_added=%d closed=%d released=%d corrected=%d lost=%d still_live=%d behind=%d",
+					res.Checked, res.TradesAdded, res.Closed, res.Released, res.Corrected, res.Lost, res.StillLive, res.Behind)
 			}
 		}
-		reconcileHour(day, hour)
-
+		reconcile()
+		t := time.NewTicker(time.Hour)
+		defer t.Stop()
 		for {
-			// Привязано к настенным часам, а не к старту процесса: запуск
-			// приходится на hh:05 независимо от того, когда процесс стартовал.
-			next := time.Now().In(v1.TimeZone).Truncate(time.Hour).Add(time.Hour + 5*time.Minute)
-			timer := time.NewTimer(time.Until(next))
 			select {
 			case <-ctx.Done():
-				timer.Stop()
 				return ctx.Err()
-			case <-timer.C:
-				day, hour := v1.PreviousHour()
-				reconcileHour(day, hour)
+			case <-t.C:
+				reconcile()
 			}
 		}
 	})
@@ -283,27 +241,34 @@ func main() {
 	case err != nil:
 		log.Fatalf("submit order: %v", err)
 	default:
+		// Status говорит только «принят» (Pending) или «нет» (Rejected, Failed):
+		// исполнение придёт сделками в handleTrade, истечение — событием в
+		// handleOrderEvent. При отказе блокировку можно снять сразу.
 		log.Printf("submitted: ref_id=%d order_id=%d order_day=%s status=%d cause=%q",
 			submitted.RefId, submitted.OrderId, submitted.OrderDay, submitted.Status, submitted.Cause)
+		if submitted.Status == v1.Rejected || submitted.Status == v1.Failed {
+			log.Printf("  order not accepted: release the reserved funds now")
+		}
 	}
 
 	// 1b. Подаём рыночный ордер. У него нет LimitRate — цену определяет стакан,
 	// а всё, что нельзя исполнить сразу, отменяется, а не остаётся в стакане.
-	// Поскольку цена заранее неизвестна, ответ синхронно возвращает исполненное
-	// количество и средневзвешенный курс; отдельные сделки по-прежнему
-	// приходят по подписке на сделки.
+	// Ответ только подтверждает приём: что исполнилось и по какому курсу,
+	// приходит сделками в handleTrade, а отменённый остаток — событием
+	// CancelledPartially (или Cancelled, если не исполнилось ничего) в
+	// handleOrderEvent.
 	if *market {
 		mkt, err := client.SubmitOrder(ctx, &v1.SubmitOrderParams{
-			Side:             v1.Sell,
-			Segment:          segment,
-			PartnerId:        *partnerId,
-			ClientId:         *clientId,
-			ClientINN:        *clientINN,
-			CurrencyPair:     "USD/TJS",
-			Quantity:         "30000.00",
-			OrderType:        v1.MarketOrder,
-			Account:          acc,
-			Fee:              fee,
+			Side:         v1.Sell,
+			Segment:      segment,
+			PartnerId:    *partnerId,
+			ClientId:     *clientId,
+			ClientINN:    *clientINN,
+			CurrencyPair: "USD/TJS",
+			Quantity:     "30000.00",
+			OrderType:    v1.MarketOrder,
+			Account:      acc,
+			Fee:          fee,
 		})
 		switch {
 		case err == v1.ErrDuplicateOrder:
@@ -311,8 +276,10 @@ func main() {
 		case err != nil:
 			log.Printf("market submit: %v", err)
 		default:
-			log.Printf("market submitted: ref_id=%d order_day=%s status=%d filled=%s avg_rate=%s cause=%q",
-				mkt.RefId, mkt.OrderDay, mkt.Status, mkt.FilledQuantity, mkt.AverageRate, mkt.Cause)
+			// Only "accepted" here: fills arrive in handleTrade, the cancelled
+			// remainder as an order event in handleOrderEvent.
+			log.Printf("market submitted: ref_id=%d order_day=%s status=%d cause=%q",
+				mkt.RefId, mkt.OrderDay, mkt.Status, mkt.Cause)
 		}
 	}
 
@@ -439,6 +406,9 @@ func streamHint(err error) string {
 	}
 }
 
+// handleTrade проводит деньги клиента по сделке. Должен быть идемпотентным:
+// одна сделка может прийти повторно — после переподключения стрима, через
+// RetryUnsettled или через ReconcileOrders. Ключ — (TradeId, OrderId, TradingDay).
 func handleTrade(ctx context.Context, ev *v1.TradeEvent) error {
 	log.Printf("TRADE: id=%d order=%d side=%d order_status=%d  day=%s filled=%s rate=%s settlement=%s fee=%s side=%d pair=%s trade_type=%d",
 		ev.TradeId, ev.OrderId, ev.Side, ev.OrderStatus, ev.TradingDay, ev.FilledQuantity, ev.ExecutionRate,
@@ -448,7 +418,14 @@ func handleTrade(ctx context.Context, ev *v1.TradeEvent) error {
 	return nil
 }
 
+// handleOrderEvent снимает блокировку, когда ордер закрылся не исполненным
+// до конца: истёк, отменён Core, отменён остаток рыночного ордера или ордер
+// так и не дошёл до Core (Failed, только от ReconcileOrders). Вызывается и
+// стримом событий, и ReconcileOrders — для одного ордера не больше одного раза.
 func handleOrderEvent(event *v1.OrderEvent) {
-	log.Printf("EVENT: ref_id=%d type=%d ts=%s remaining=%s",
-		event.RefId, event.EventType, event.EventTimestamp, event.RemainingQuantity)
+	log.Printf("EVENT: ref_id=%d day=%s type=%d ts=%s remaining=%s",
+		event.RefId, event.OrderDay, event.EventType, event.EventTimestamp, event.RemainingQuantity)
+	if amount, release := event.GetReleaseAmount(); release {
+		log.Printf("  release reserved funds: %s (order %s/%d)", amount, event.OrderDay, event.RefId)
+	}
 }
