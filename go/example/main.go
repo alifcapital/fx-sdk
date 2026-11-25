@@ -46,9 +46,9 @@ import (
 
 func main() {
 	var (
-		target    = flag.String("target", "test:8443", "FX Core gRPC address")
+		target    = flag.String("target", "test:843", "FX Core gRPC address")
 		sdkId     = flag.String("sdk-id", "02347fcf7", "SDK identifier")
-		apiKey    = flag.String("api-key", "dQ234q07sd8JeTBA==", "API key")
+		apiKey    = flag.String("api-key", "", "API key")
 		dsn       = flag.String("dsn", "postgres://postgres:pass123@192.168.215.2:5432/fxdb?sslmode=disable", "Postgres DSN for the local orders table")
 		partnerId = flag.String("partner-id", "sdfe", "partner identifier")
 		clientId  = flag.String("client-id", "1278", "client identifier (required for filter)")
@@ -236,10 +236,14 @@ func main() {
 		Fee:              fee,
 	})
 	switch {
-	case err == v1.ErrDuplicateOrder:
-		log.Printf("submit: duplicate detected within 1 minutes, skipping")
+	case errors.Is(err, v1.ErrOrderOutcomeUnknown):
+		// Запрос ушёл, ответа нет: ордер может существовать. Блокировку держать,
+		// заново не подавать — придут стримы или ReconcileOrders.
+		log.Printf("submit: outcome unknown, keep the funds reserved: ref_id=%d order_day=%s: %v",
+			submitted.RefId, submitted.OrderDay, err)
 	case err != nil:
-		log.Fatalf("submit order: %v", err)
+		// Любая другая ошибка: этим вызовом ордер не создан — блокировку снять.
+		log.Printf("submit: order not created, release the funds: %v", err)
 	default:
 		// Status говорит только «принят» (Pending) или «нет» (Rejected, Failed):
 		// исполнение придёт сделками в handleTrade, истечение — событием в
@@ -271,10 +275,10 @@ func main() {
 			Fee:          fee,
 		})
 		switch {
-		case err == v1.ErrDuplicateOrder:
-			log.Printf("market submit: duplicate detected within 2 minutes, skipping")
+		case errors.Is(err, v1.ErrOrderOutcomeUnknown):
+			log.Printf("market submit: outcome unknown, keep the funds reserved: ref_id=%d: %v", mkt.RefId, err)
 		case err != nil:
-			log.Printf("market submit: %v", err)
+			log.Printf("market submit: order not created, release the funds: %v", err)
 		default:
 			// Only "accepted" here: fills arrive in handleTrade, the cancelled
 			// remainder as an order event in handleOrderEvent.
