@@ -8,6 +8,8 @@ import (
 
 	"github.com/alifcapital/fx-sdk/go/forexv1"
 	"github.com/jackc/pgx/v5/pgconn"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // SubmitOrder inserts the order into the local database, reads back the
@@ -26,7 +28,7 @@ func (c *Client) SubmitOrder(ctx context.Context, p *SubmitOrderParams) (*Submit
 	}
 
 	if p.Segment < Retail || p.Segment > Treasury {
-		return nil, fmt.Errorf("fx-sdk: SubmitOrder: segment is required")
+		return nil, ErrInvalidSegment
 	}
 
 	// order_type defaults to limit when the caller leaves it unset, matching the
@@ -111,7 +113,7 @@ func (c *Client) SubmitOrder(ctx context.Context, p *SubmitOrderParams) (*Submit
 			  AND currency_pair = $6
 			  AND order_type = $7);`, p.Side, limitRate, p.PartnerId, p.ClientId, p.Quantity, p.CurrencyPair, orderType).Scan(&exists)
 	if err != nil {
-		return nil, fmt.Errorf("fx-sdk: не удалось проверить ордер на повтор: %w", err)
+		return nil, fmt.Errorf("%w: не удалось проверить ордер на повтор: %w", ErrOrderNotAccepted, err)
 	}
 	if exists {
 		return nil, ErrDuplicateOrder
@@ -139,7 +141,7 @@ func (c *Client) SubmitOrder(ctx context.Context, p *SubmitOrderParams) (*Submit
 		orderType, p.CounterpartySegment,
 	).Scan(&refId, &orderDay)
 	if err != nil {
-		return nil, fmt.Errorf("fx-sdk: insert order: %w", err)
+		return nil, fmt.Errorf("%w: insert order: %w", ErrOrderNotAccepted, err)
 	}
 
 	// 2. Build and send the gRPC request. ref_id is the local BIGSERIAL,
@@ -162,7 +164,23 @@ func (c *Client) SubmitOrder(ctx context.Context, p *SubmitOrderParams) (*Submit
 
 	resp, err := c.order.SubmitOrder(ctx, req)
 	if err != nil {
-		return nil, fmt.Errorf("fx-sdk: submit order: %w", err)
+		if refusedBeforeStored(err) {
+			// The Core turned the request away before storing an order, so
+			// none will ever exist. The local row is closed now, with the
+			// reason; left Pending, ReconcileOrders would release it a second
+			// time a day later.
+			if _, uerr := c.db.Exec(context.WithoutCancel(ctx),
+				`UPDATE client_orders SET status = $1, cause = $2, updated_at = NOW()
+				  WHERE ref_id = $3 AND order_day = $4 AND status = $5`,
+				int16(Rejected), err.Error(), refId, orderDay, int16(Pending)); uerr != nil {
+				log.Println("fx-sdk: submit order: record refusal: ", uerr)
+			}
+			return nil, fmt.Errorf("%w: submit order: %w", ErrOrderNotAccepted, err)
+		}
+		// Sent, and no usable answer: the order may well exist. The row stays
+		// Pending for the streams or ReconcileOrders to settle.
+		return &SubmitOrderResult{RefId: refId, OrderDay: orderDay, Status: Unknown},
+			fmt.Errorf("%w: submit order: %w", ErrOrderOutcomeUnknown, err)
 	}
 
 	// 3. Reflect the Core's response into the local row.
@@ -477,4 +495,23 @@ func (c *Client) GetOrderBookDepth(ctx context.Context, p *GetOrderBookDepthPara
 	}
 
 	return out, nil
+}
+
+// refusedBeforeStored reports whether a SubmitOrder error proves the Core
+// stored no order. These codes come from authentication and request checks
+// that run before the order is written. Everything else — Unavailable,
+// DeadlineExceeded, Canceled, Internal, an error that is not a gRPC status at
+// all — may have been raised after the order was stored, and is treated as an
+// unknown outcome.
+func refusedBeforeStored(err error) bool {
+	st, ok := status.FromError(err)
+	if !ok {
+		return false
+	}
+	switch st.Code() {
+	case codes.Unauthenticated, codes.PermissionDenied, codes.InvalidArgument,
+		codes.FailedPrecondition, codes.Unimplemented:
+		return true
+	}
+	return false
 }

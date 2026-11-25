@@ -45,6 +45,26 @@ var (
 	ErrTreasuryCounterpartyOnly = errors.New("fx-sdk: only a Treasury order may set CounterpartySegment = Treasury")
 	// ErrInvalidDay is returned when a day parameter is not a YYYY-MM-DD date.
 	ErrInvalidDay = errors.New("fx-sdk: day must be a YYYY-MM-DD date")
+	// ErrInvalidSegment is returned when segment is not Retail, Corporate or Treasury.
+	ErrInvalidSegment = errors.New("fx-sdk: segment must be Retail, Corporate or Treasury")
+
+	// ErrOrderNotAccepted wraps a SubmitOrder failure after which no order
+	// exists in the Core: the local database failed before the request was
+	// sent, or the Core refused the request outright (authentication,
+	// permissions, malformed request) before storing anything. Funds reserved
+	// for this call can be released. If the local row was already written it
+	// is marked Rejected with the reason, so nothing later releases it again.
+	ErrOrderNotAccepted = errors.New("fx-sdk: ордер не принят")
+	// ErrOrderOutcomeUnknown wraps a SubmitOrder failure after which the order
+	// may or may not exist in the Core: the request was sent and no usable
+	// answer came back (network failure, timeout, cancelled context, an error
+	// the SDK cannot classify). Keep the reserved funds and do not submit again
+	// — that could create a second order. If the order exists, its trades and
+	// events arrive on the streams; if it does not, ReconcileOrders marks it
+	// Failed and releases it through the order handler. SubmitOrder returns a
+	// non-nil result with RefId and OrderDay alongside this error, so the
+	// caller can tie what arrives later to this submission.
+	ErrOrderOutcomeUnknown = errors.New("fx-sdk: неизвестно, принят ли ордер")
 )
 
 // Side represents the order direction.
